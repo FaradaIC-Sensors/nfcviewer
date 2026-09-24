@@ -15,9 +15,9 @@
     .card small { display: block; opacity: .7; }
     .card strong { display: block; margin-top: 3px; font-size: 1.5rem; }
     svg { width: 100%; height: auto; min-height: 360px; display: block; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; background: color-mix(in srgb, CanvasText 3%, Canvas); }
-    .help { margin-top: 20px; font-size: .92rem; opacity: .8; line-height: 1.45; }
-    code { overflow-wrap: anywhere; }
-    @media (max-width: 560px) { body { padding: 14px; } .values { grid-template-columns: 1fr; } }
+    @media (max-width: 560px) {
+      body { padding: 14px; }
+    }
   </style>
 </head>
 <body>
@@ -30,21 +30,13 @@
     <div class="card"><small>Latest temperature</small><strong id="temp">—</strong></div>
   </section>
 
-  <svg id="chart" viewBox="0 0 1000 440" role="img" aria-label="Readings chart" hidden></svg>
-
-  <p class="help">
-    Data is read from <code>#fragment</code>. Binary format: <code>uint32_t</code> interval in seconds,
-    followed by <code>int16_t</code> triples: O₂×10, temperature×10, RH×10. All values are little-endian.
-    Example: <code id="example"></code>
-  </p>
+    <svg id="chart" viewBox="0 0 1000 440" role="img" aria-label="Readings chart" hidden></svg>
 
   <script>
     (() => {
       const $ = id => document.getElementById(id);
       const svg = $('chart');
       const ns = 'http://www.w3.org/2000/svg';
-      const sample = 'PAAAAO0AVADnAOUAVgDmAPQAIAHmAP0AYQDmAAkBZwDnADQBaADnAA8BaQDoAA==';
-      $('example').textContent = sample;
 
       function decodeBase64(fragment) {
         // Regular Base64, URL-safe Base64, and whitespace are supported.
