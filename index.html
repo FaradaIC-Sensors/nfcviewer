@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sensor: O₂, humidity and temperature</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+    body { max-width: 1050px; margin: 0 auto; padding: 24px; background: Canvas; color: CanvasText; }
+    h1 { margin-top: 0; font-size: 1.45rem; }
+    .status { padding: 12px 14px; border-radius: 8px; background: color-mix(in srgb, CanvasText 8%, Canvas); }
+    .error { background: #ffe5e5; color: #7c1111; }
+    .values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 20px 0; }
+    .card { padding: 16px; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; }
+    .card small { display: block; opacity: .7; }
+    .card strong { display: block; margin-top: 3px; font-size: 1.5rem; }
+    svg { width: 100%; height: auto; min-height: 360px; display: block; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; background: color-mix(in srgb, CanvasText 3%, Canvas); }
+    .help { margin-top: 20px; font-size: .92rem; opacity: .8; line-height: 1.45; }
+    code { overflow-wrap: anywhere; }
+    @media (max-width: 560px) { body { padding: 14px; } .values { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <h1>Sensor readings</h1>
+  <div id="status" class="status" hidden></div>
+
+  <section id="values" class="values" aria-label="Latest readings" hidden>
+    <div class="card"><small>Latest O₂</small><strong id="o2">—</strong></div>
+    <div class="card"><small>Latest humidity</small><strong id="rh">—</strong></div>
+    <div class="card"><small>Latest temperature</small><strong id="temp">—</strong></div>
+  </section>
+
+  <svg id="chart" viewBox="0 0 1000 440" role="img" aria-label="Readings chart" hidden></svg>
+
+  <p class="help">
+    Data is read from <code>#fragment</code>. Binary format: <code>uint32_t</code> interval in seconds,
+    followed by <code>int16_t</code> triples: O₂×10, temperature×10, RH×10. All values are little-endian.
+    Example: <code id="example"></code>
+  </p>
+
+  <script>
+    (() => {
+      const $ = id => document.getElementById(id);
+      const svg = $('chart');
+      const ns = 'http://www.w3.org/2000/svg';
+      const sample = 'PAAAAO0AVADnAOUAVgDmAPQAIAHmAP0AYQDmAAkBZwDnADQBaADnAA8BaQDoAA==';
+      $('example').textContent = sample;
+
+      function decodeBase64(fragment) {
+        // Regular Base64, URL-safe Base64, and whitespace are supported.
+        let value = decodeURIComponent(fragment.replace(/^#/, '')).replace(/\s/g, '').replace(/-/g, '+').replace(/_/g, '/');
+        value += '='.repeat((4 - value.length % 4) % 4);
+        const binary = atob(value);
+        return Uint8Array.from(binary, char => char.charCodeAt(0));
+      }
+
+      function parse(bytes) {
+        if (bytes.length < 4 || (bytes.length - 4) % 6) throw new Error('Packet length must be 4 + N×6 bytes.');
+        const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+        const interval = view.getUint32(0, true);
+        if (!interval) throw new Error('Measurement interval must be greater than zero.');
+        const points = [];
+        for (let offset = 4, i = 0; offset < bytes.length; offset += 6, i++) {
+          points.push({
+            time: i * interval,
+            o2: view.getInt16(offset, true) / 10,
+            temp: view.getInt16(offset + 2, true) / 10,
+            rh: view.getInt16(offset + 4, true) / 10
+          });
+        }
+        if (!points.length) throw new Error('The packet contains no readings.');
+        return { interval, points };
+      }
+
+      const node = (tag, attrs = {}, content = '') => {
+        const el = document.createElementNS(ns, tag);
+        Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+        el.textContent = content;
+        return el;
+      };
+      const range = values => {
+        let min = Math.min(...values), max = Math.max(...values);
+        if (min === max) { const pad = min === 0 ? 1 : Math.abs(min) * .1; min -= pad; max += pad; }
+        const pad = (max - min) * .08;
+        return [min - pad, max + pad];
+      };
+      const fmt = n => Number(n.toFixed(1)).toString();
+
+      function draw(data) {
+        svg.replaceChildren();
+        const W = 1000, H = 440, L = 72, R = 72, T = 32, B = 58, w = W - L - R, h = H - T - B;
+        const { points } = data;
+        const [oMin, oMax] = range(points.map(p => p.o2));
+        const [rMin, rMax] = range(points.flatMap(p => [p.rh, p.temp]));
+        const maxTime = Math.max(points.at(-1).time, data.interval);
+        const x = p => L + p.time / maxTime * w;
+        const yLeft = v => T + (oMax - v) / (oMax - oMin) * h;
+        const yRight = v => T + (rMax - v) / (rMax - rMin) * h;
+        const grid = 'color-mix(in srgb, CanvasText 18%, Canvas)';
+
+        for (let i = 0; i <= 5; i++) {
+          const y = T + h * i / 5;
+          svg.append(node('line', { x1: L, x2: W - R, y1: y, y2: y, stroke: grid }));
+          svg.append(node('text', { x: L - 8, y: y + 4, 'text-anchor': 'end', 'font-size': 12, fill: '#1677c8' }, fmt(oMax - (oMax - oMin) * i / 5)));
+          svg.append(node('text', { x: W - R + 8, y: y + 4, 'font-size': 12, fill: '#9b5d00' }, fmt(rMax - (rMax - rMin) * i / 5)));
+        }
+        for (let i = 0; i <= 4; i++) {
+          const time = maxTime * i / 4, px = L + w * i / 4;
+          svg.append(node('line', { x1: px, x2: px, y1: T, y2: H - B, stroke: grid }));
+          svg.append(node('text', { x: px, y: H - B + 22, 'text-anchor': 'middle', 'font-size': 12 }, `${fmt(time)} с`));
+        }
+        svg.append(node('text', { x: L, y: 18, fill: '#1677c8', 'font-size': 14, 'font-weight': '600' }, 'O₂, %'));
+        svg.append(node('text', { x: W - R, y: 18, fill: '#9b5d00', 'font-size': 14, 'font-weight': '600', 'text-anchor': 'end' }, 'RH, % / temperature, °C'));
+        const line = (key, scale, color, label) => {
+          const d = points.map((p, i) => `${i ? 'L' : 'M'}${x(p).toFixed(2)},${scale(p[key]).toFixed(2)}`).join(' ');
+          svg.append(node('path', { d, fill: 'none', stroke: color, 'stroke-width': 2.5, 'stroke-linejoin': 'round' }));
+          points.forEach(p => svg.append(node('circle', { cx: x(p), cy: scale(p[key]), r: 3.2, fill: color }, '')));
+          return label;
+        };
+        line('o2', yLeft, '#1677c8', 'O₂');
+        line('rh', yRight, '#e38b00', 'RH');
+        line('temp', yRight, '#d13d6b', 'Temperature');
+        [['#1677c8', 'O₂'], ['#e38b00', 'RH'], ['#d13d6b', 'Temperature']].forEach(([color, label], i) => {
+          const lx = L + i * 135;
+          svg.append(node('line', { x1: lx, x2: lx + 22, y1: H - 16, y2: H - 16, stroke: color, 'stroke-width': 3 }));
+          svg.append(node('text', { x: lx + 28, y: H - 12, 'font-size': 13 }, label));
+        });
+      }
+
+      try {
+        const fragment = location.hash.slice(1);
+        if (!fragment) return;
+        const data = parse(decodeBase64(fragment));
+        const last = data.points.at(-1);
+        $('o2').textContent = `${fmt(last.o2)} %`;
+        $('rh').textContent = `${fmt(last.rh)} %`;
+        $('temp').textContent = `${fmt(last.temp)} °C`;
+        $('status').hidden = false;
+        $('values').hidden = false;
+        svg.hidden = false;
+        $('status').textContent = `Loaded ${data.points.length} readings at ${data.interval}-second intervals.`;
+        draw(data);
+      } catch (error) {
+        $('status').classList.add('error');
+        $('status').hidden = false;
+        $('status').textContent = `Could not read data: ${error.message}`;
+      }
+    })();
+  </script>
+</body>
+</html>
