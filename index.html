@@ -37,9 +37,11 @@
     <div class="card"><small>LIS2DW12 · Z acceleration</small><strong id="z">—</strong></div>
     <div class="card"><small>DPS368 · Pressure</small><strong id="pressure">—</strong></div>
     <div class="card"><small>DPS368 · Temperature</small><strong id="temp">—</strong></div>
-    <div class="card"><small>TCI</small><strong id="tci">—</strong><p>H₂ readings are not included in this packet.</p></div>
+    <div class="card"><small>TCI · CO₂</small><strong id="co2">—</strong><p id="tci">—</p></div>
+    <div class="card"><small>O₂ concentration</small><strong id="o2">—</strong></div>
+    <div id="o2-status-card" class="card"><small>O₂ status</small><strong id="o2-status">—</strong><p id="o2-details"></p></div>
   </section>
-  <p id="note" class="note" hidden>— means the sensor was not initialized. Readings are approximate; mg = 0.001 g. The mask reports initialization, not read success: zero may be a real reading or a read error.</p>
+  <p id="note" class="note" hidden>— means an external sensor was not initialized or the O₂ measurement failed. Readings are approximate; mg = 0.001 g. The external sensor mask reports initialization, not read success: zero may be a real reading or a read error. O₂ has its own status, independent of the mask; status 0x00 means success, including 0.00 %.</p>
 
   <!-- Chart display is temporarily disabled. -->
   <svg id="chart" viewBox="0 0 1000 440" role="img" aria-label="Readings chart" hidden></svg>
@@ -47,6 +49,7 @@
   <script>
     (() => {
       const $ = id => document.getElementById(id);
+      const hex = value => `0x${value.toString(16).toUpperCase().padStart(2, '0')}`;
 
       function decodeBase64(fragment) {
         // Regular Base64, URL-safe Base64, and whitespace are supported.
@@ -57,10 +60,11 @@
       }
 
       function parse(bytes) {
-        // LoggerApp record layout: LOGGER_RECORD_FORMAT.md (12 bytes, little-endian).
-        if (bytes.length !== 12) throw new Error('Expected a 12-byte logger record (16 Base64 characters).');
+        // LoggerApp record layout: LOGGER_RECORD_FORMAT.md (17 bytes, little-endian).
+        if (bytes.length !== 17) throw new Error('Expected a 17-byte logger record (24 Base64 characters).');
         const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
         const mask = view.getUint8(4);
+        const o2Status = view.getUint8(16);
         return {
           measurement: view.getUint32(0, true),
           mask,
@@ -71,6 +75,9 @@
           z: mask & 0x02 ? view.getInt8(9) * 10 : null,
           pressure: mask & 0x04 ? view.getUint8(10) * 500 : null,
           temp: mask & 0x04 ? view.getInt8(11) : null,
+          co2: mask & 0x08 ? view.getInt16(12, true) / 100 : null,
+          o2: o2Status === 0 ? view.getInt16(14, true) / 100 : null,
+          o2Status,
         };
       }
 
@@ -79,7 +86,7 @@
         if (!fragment) return;
         const data = parse(decodeBase64(fragment));
         $('measurement').textContent = String(data.measurement);
-        $('mask').textContent = `0x${data.mask.toString(16).toUpperCase().padStart(2, '0')}`;
+        $('mask').textContent = hex(data.mask);
         const sensors = [[0x01, 'LTR390'], [0x02, 'LIS2DW12'], [0x04, 'DPS368'], [0x08, 'TCI']];
         const initialized = sensors.filter(([bit]) => data.mask & bit).map(([, name]) => name);
         $('sensors').textContent = initialized.length ? `Initialized: ${initialized.join(', ')}` : 'No known sensors initialized';
@@ -87,6 +94,24 @@
           $(key).textContent = data[key] === null ? '—' : `${data[key]} ${unit}`;
         }
         $('tci').textContent = data.mask & 0x08 ? 'Initialized' : 'Not initialized';
+        $('co2').textContent = data.co2 === null ? '—' : `${data.co2.toFixed(2)} vol%`;
+        $('o2').textContent = data.o2 === null ? '—' : `${data.o2.toFixed(2)} %`;
+        $('o2-status').textContent = hex(data.o2Status);
+        const o2Flags = [
+          [0x01, 'Measurement complete'],
+          [0x02, 'Measurement in progress'],
+          [0x04, 'SHT4x error'],
+          [0x08, 'O₂ measurement error'],
+          [0x10, 'SHT4x measurement complete'],
+          [0x20, 'Default script restored'],
+        ];
+        if (data.o2Status === 0) {
+          $('o2-details').textContent = 'Measurement successful';
+        } else {
+          $('o2-status-card').classList.add('error');
+          const flags = o2Flags.filter(([bit]) => data.o2Status & bit).map(([, label]) => label);
+          $('o2-details').textContent = ['Measurement failed', ...flags].join('; ');
+        }
         $('status').textContent = `Loaded measurement #${data.measurement}.`;
         $('status').hidden = false;
         $('values').hidden = false;
