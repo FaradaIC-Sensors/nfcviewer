@@ -15,6 +15,7 @@
     .card small { display: block; opacity: .7; }
     .card strong { display: block; margin-top: 3px; font-size: 1.5rem; }
     .card p, .note { font-size: .9rem; line-height: 1.5; opacity: .75; }
+    .message { white-space: pre-wrap; overflow-wrap: anywhere; }
     [hidden] { display: none !important; }
     svg { width: 100%; height: auto; min-height: 360px; display: block; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; background: color-mix(in srgb, CanvasText 3%, Canvas); }
     svg[hidden] { display: none; }
@@ -40,6 +41,10 @@
     <div class="card"><small>TCI · CO₂</small><strong id="co2">—</strong><p id="tci">—</p></div>
     <div class="card"><small>O₂ concentration</small><strong id="o2">—</strong></div>
     <div id="o2-status-card" class="card"><small>O₂ status</small><strong id="o2-status">—</strong><p id="o2-details"></p></div>
+  </section>
+  <section id="message-card" class="card" aria-label="Additional text" hidden>
+    <small>Additional text</small>
+    <p id="message" class="message"></p>
   </section>
   <p id="note" class="note" hidden>— means an external sensor was not initialized or the O₂ measurement failed. Readings are approximate; mg = 0.001 g. The external sensor mask reports initialization, not read success: zero may be a real reading or a read error. O₂ has its own status, independent of the mask; status 0x00 means success, including 0.00 %.</p>
 
@@ -81,10 +86,27 @@
         };
       }
 
+      function readFragment(fragment) {
+        // The padded Base64 record ends at =; everything after it is plain text.
+        const padding = fragment.match(/=|%3d/i);
+        if (!padding) return { data: parse(decodeBase64(fragment)), text: '' };
+        const end = padding.index + padding[0].length;
+        const data = parse(decodeBase64(fragment.slice(0, end)));
+        const suffix = fragment.slice(end);
+        let text;
+        try {
+          // A literal % in the appended text need not be a URL escape.
+          text = decodeURIComponent(suffix.replace(/%(?![0-9a-f]{2})/gi, '%25'));
+        } catch {
+          text = suffix;
+        }
+        return { data, text };
+      }
+
       try {
         const fragment = location.hash.slice(1);
         if (!fragment) return;
-        const data = parse(decodeBase64(fragment));
+        const { data, text } = readFragment(fragment);
         $('measurement').textContent = String(data.measurement);
         $('mask').textContent = hex(data.mask);
         const sensors = [[0x01, 'LTR390'], [0x02, 'LIS2DW12'], [0x04, 'DPS368'], [0x08, 'TCI']];
@@ -116,6 +138,8 @@
         $('status').hidden = false;
         $('values').hidden = false;
         $('note').hidden = false;
+        $('message').textContent = text;
+        $('message-card').hidden = text.length === 0;
       } catch (error) {
         $('status').classList.add('error');
         $('status').hidden = false;
