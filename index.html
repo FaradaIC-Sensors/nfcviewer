@@ -32,11 +32,25 @@
     .reading svg[aria-label="Humidity"] { color: #3b82f6; }
     .lux-reading svg { color: #facc15; }
     .record-heading { margin-bottom: .75rem; font-size: .9rem; opacity: .75; }
+    #history > summary { cursor: pointer; font-size: .9rem; }
     [hidden] { display: none !important; }
-    #chart { width: 100%; height: auto; min-height: 360px; display: block; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; background: color-mix(in srgb, CanvasText 3%, Canvas); }
-    svg[hidden] { display: none; }
+    #chart-panel { margin-bottom: 20px; overflow: hidden; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; background: color-mix(in srgb, CanvasText 3%, Canvas); }
+    .chart-legend { display: flex; flex-wrap: wrap; gap: .5rem 1rem; padding: 12px 16px; font-size: .8rem; font-weight: 600; }
+    .chart-legend-item { display: inline-flex; align-items: center; gap: .4rem; padding: 4px 8px; border: 1px solid currentColor; border-radius: 5px; font: inherit; color: var(--series-color); background: transparent; cursor: pointer; }
+    .chart-legend-item[aria-pressed="false"] { color: #808080; }
+    .chart-legend-item:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+    .chart-swatch { width: 20px; border-top: 2px solid currentColor; }
+    .chart-swatch.dashed { border-top-style: dashed; }
+    .chart-layout { display: flex; align-items: flex-start; min-width: 0; }
+    .chart-axes { display: block; flex: 0 1 auto; width: var(--axis-width); min-width: 0; height: 390px; }
+    #chart-scroll { flex: 1 1 0; min-width: 96px; overflow-x: auto; overflow-y: hidden; }
+    #chart { display: block; width: 100%; min-width: 720px; height: 390px; }
+    .chart-grid { stroke: CanvasText; stroke-opacity: .15; }
+    .chart-label { fill: CanvasText; }
+    .chart-point:focus { outline: none; stroke: CanvasText; stroke-width: 2; }
     @media (max-width: 560px) {
       body { padding: 14px; }
+      .chart-axes { width: calc(var(--axis-width) * .75); }
     }
   </style>
 </head>
@@ -44,7 +58,21 @@
   <h1><span>Sensor: <span id="sensor-id">—</span></span><span id="measurement-info" hidden>last reading #<span id="measurement">—</span> at <span id="timestamp">—</span></span></h1>
   <div id="status" class="status" hidden></div>
 
-  <section id="values" class="values" aria-label="Sensor readings" hidden></section>
+  <section id="values" class="values" aria-label="Latest reading" hidden></section>
+  <section id="chart-panel" aria-label="Measurement history chart" hidden>
+    <div id="chart-legend" class="chart-legend" aria-label="Chart legend"></div>
+    <div class="chart-layout">
+      <svg id="chart-left-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Left Y scales"></svg>
+      <div id="chart-scroll" tabindex="0" role="region" aria-label="Scrollable measurement history">
+        <svg id="chart" preserveAspectRatio="none" role="img" aria-label="History of sensor readings"></svg>
+      </div>
+      <svg id="chart-right-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Right Y scales"></svg>
+    </div>
+  </section>
+  <details id="history" hidden>
+    <summary id="history-summary">Previous readings</summary>
+    <section id="history-values" class="values" aria-label="Previous readings"></section>
+  </details>
   <template id="reading-template">
     <article class="card record">
       <div class="record-heading" data-field="record-heading">reading #<span data-field="measurement"></span> at <span data-field="timestamp"></span></div>
@@ -74,9 +102,6 @@
       </div>
     </article>
   </template>
-
-  <!-- Chart display is temporarily disabled. -->
-  <svg id="chart" viewBox="0 0 1000 440" role="img" aria-label="Readings chart" hidden></svg>
 
   <script>
     (() => {
@@ -123,21 +148,179 @@
         return { deviceId: header.getUint32(0, true), records };
       }
 
-      function renderReading(data, showHeading) {
+      function formatTime(milliseconds) {
+        const date = new Date(milliseconds);
+        const pad = value => String(value).padStart(2, '0');
+        return `${pad(date.getDate())}.${pad(date.getMonth() + 1)} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+      }
+
+      function tiltAngle(data) {
+        return data.x === null || Math.hypot(data.x, data.y, data.z) === 0
+          ? null : Math.atan2(Math.hypot(data.x, data.y), data.z) * 180 / Math.PI;
+      }
+
+      function drawChart(records, timeOffset) {
+        const svg = $('chart');
+        const leftAxes = $('chart-left-axes'), rightAxes = $('chart-right-axes');
+        const legend = $('chart-legend');
+        const node = (tag, attrs = {}, text = '') => {
+          const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
+          Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+          el.textContent = text;
+          return el;
+        };
+        const series = [
+          { key: 'pressure', label: 'Pressure', unit: 'hPa', color: '#22c55e', value: r => r.pressure === null ? null : r.pressure / 100 },
+          { key: 'temp', label: 'Temperature', unit: '°C', color: '#ef4444', value: r => r.temp },
+          { key: 'humidity', label: 'Humidity', unit: '%RH', color: '#3b82f6', value: r => r.humidity },
+          { key: 'tilt', label: 'Tilt', unit: '°', color: 'CanvasText', dash: '6 4', value: tiltAngle },
+          { key: 'lux', label: 'Illuminance', unit: 'lux', color: '#facc15', value: r => r.lux },
+          { key: 'co2', label: 'CO₂', unit: '%', color: 'CanvasText', value: r => r.co2 },
+          { key: 'o2', label: 'O₂', unit: '%', color: '#38bdf8', value: r => r.o2 },
+        ];
+        const ordered = [...records].sort((a, b) => a.timestamp - b.timestamp || a.packetIndex - b.packetIndex);
+        const curves = series.map(s => ({ ...s, points: ordered.map(record => ({ record, value: s.value(record) })) }))
+          .filter(s => s.points.some(p => p.value !== null));
+        const H = 390, axisGap = 46;
+        const L = Math.ceil(curves.length / 2) * axisGap + 12;
+        const R = Math.floor(curves.length / 2) * axisGap + 12;
+        const controls = [];
+        const layoutAxes = () => {
+          for (const [container, left] of [[leftAxes, true], [rightAxes, false]]) {
+            const active = controls.filter(control => control.left === left && control.visible);
+            const width = active.length ? active.length * axisGap + 12 : 0;
+            container.setAttribute('viewBox', `0 0 ${Math.max(1, width)} ${H}`);
+            container.setAttribute('style', `--axis-width: ${width}px`);
+            active.forEach((control, index) => {
+              const axisX = left ? width - 1 - index * axisGap : 1 + index * axisGap;
+              control.axis.setAttribute('transform', `translate(${axisX - control.axisX}, 0)`);
+            });
+          }
+        };
+        const plotTop = 24, plotBottom = 338;
+        const stepX = 10 * 60 * 1000;
+        const startTime = timeOffset + ordered[0].timestamp * 1000;
+        const start = new Date(startTime);
+        const firstTime = startTime - ((start.getMinutes() % 10) * 60 + start.getSeconds()) * 1000 - start.getMilliseconds();
+        const latestTime = timeOffset + ordered.at(-1).timestamp * 1000;
+        const intervals = Math.max(1, Math.ceil((latestTime - firstTime) / stepX));
+        const lastTime = firstTime + intervals * stepX;
+        const W = Math.max(720, intervals * 128 + 8);
+        const timeX = time => 4 + (time - firstTime) / (lastTime - firstTime) * (W - 8);
+        const x = timestamp => timeX(timeOffset + timestamp * 1000);
+        const ticks = Array.from({ length: intervals + 1 }, (_, i) => firstTime + i * stepX);
+        const number = value => String(Number(value.toFixed(2)));
+        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+        svg.setAttribute('style', `min-width: ${W}px`);
+        leftAxes.setAttribute('viewBox', `0 0 ${L} ${H}`);
+        rightAxes.setAttribute('viewBox', `0 0 ${R} ${H}`);
+        leftAxes.setAttribute('style', `--axis-width: ${L}px`);
+        rightAxes.setAttribute('style', `--axis-width: ${R}px`);
+        leftAxes.replaceChildren(node('title', {}, 'Left Y scales'));
+        rightAxes.replaceChildren(node('title', {}, 'Right Y scales'));
+        legend.replaceChildren();
+        svg.replaceChildren(
+          node('title', {}, 'History of sensor readings'),
+          node('desc', {}, `${records.length} measurements on one plot with a shared local-time axis and a separate vertical scale for each metric. Unavailable readings leave gaps.`),
+          node('rect', { x: 0, y: plotTop, width: W, height: plotBottom - plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }),
+        );
+        for (let i = 1; i < 4; i++) {
+          const py = plotTop + (plotBottom - plotTop) * i / 4;
+          svg.append(node('line', { x1: 0, x2: W, y1: py, y2: py, class: 'chart-grid' }));
+        }
+        ticks.forEach(time => svg.append(node('line', { x1: timeX(time), x2: timeX(time), y1: plotTop, y2: plotBottom, class: 'chart-grid' })));
+        curves.forEach((s, index) => {
+          const values = s.points.filter(p => p.value !== null).map(p => p.value);
+          let min = Math.min(...values), max = Math.max(...values);
+          const pad = min === max ? Math.max(Math.abs(min) * .1, 1) : (max - min) * .08;
+          min -= pad;
+          max += pad;
+          const rawStep = Math.max(1, (max - min) / 4);
+          const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+          const step = [1, 2, 5, 10].map(factor => factor * magnitude).find(value => value >= rawStep);
+          min = Math.floor(min / step) * step;
+          max = Math.ceil(max / step) * step;
+          const y = value => plotBottom - (value - min) / (max - min) * (plotBottom - plotTop);
+          const left = index % 2 === 0;
+          const axisX = left ? L - 1 - Math.floor(index / 2) * axisGap : 1 + Math.floor(index / 2) * axisGap;
+          const labelX = axisX + (left ? -8 : 8);
+          const anchor = left ? 'end' : 'start';
+          const item = document.createElement('button');
+          item.setAttribute('class', 'chart-legend-item');
+          item.setAttribute('type', 'button');
+          item.setAttribute('style', `--series-color: ${s.color}`);
+          item.setAttribute('data-toggle-series', s.key);
+          item.setAttribute('aria-pressed', 'true');
+          item.setAttribute('title', `Show/hide ${s.label}`);
+          const swatch = document.createElement('span');
+          swatch.setAttribute('class', `chart-swatch${s.dash ? ' dashed' : ''}`);
+          swatch.setAttribute('aria-hidden', 'true');
+          const label = document.createElement('span');
+          label.textContent = s.label;
+          item.append(swatch, label);
+          legend.append(item);
+          const group = node('g', { 'data-series': s.key, role: 'group', 'aria-label': `${s.label}, ${s.unit}` });
+          const axis = node('g', { 'data-axis-series': s.key, role: 'group', 'aria-label': `${s.label}, ${s.unit}` });
+          axis.append(
+            node('line', { x1: axisX, x2: axisX, y1: plotTop, y2: plotBottom, stroke: s.color, 'data-y-axis': s.key }),
+            node('text', { x: labelX, y: plotTop - 12, fill: s.color, 'text-anchor': anchor, 'font-size': 11, 'font-weight': 600 }, s.unit),
+          );
+          for (let value = min; value <= max; value += step) {
+            const py = y(value);
+            axis.append(node('line', { x1: axisX, x2: axisX + (left ? -4 : 4), y1: py, y2: py, stroke: s.color }));
+            axis.append(node('text', { x: labelX, y: py + 4, fill: s.color, 'text-anchor': anchor, 'font-size': 11, 'data-axis-value': value }, String(value)));
+          }
+          (left ? leftAxes : rightAxes).append(axis);
+          let path = '', connected = false;
+          const markers = [];
+          s.points.forEach(({ record, value }) => {
+            if (value === null) { connected = false; return; }
+            const px = x(record.timestamp), py = y(value);
+            path += `${connected ? 'L' : 'M'}${px.toFixed(2)},${py.toFixed(2)} `;
+            connected = true;
+            const label = `#${record.measurement} · ${formatTime(timeOffset + record.timestamp * 1000)} · ${s.label}: ${number(value)} ${s.unit}`;
+            const point = node('circle', {
+              cx: px, cy: py, r: 4, fill: s.color, class: 'chart-point', tabindex: 0, role: 'img', 'aria-label': label,
+              'data-value': value, 'data-timestamp': record.timestamp, 'data-packet-index': record.packetIndex,
+            });
+            point.append(node('title', {}, label));
+            markers.push(point);
+          });
+          group.append(node('path', { d: path.trim(), fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }), ...markers);
+          svg.append(group);
+          const control = { axis, axisX, left, visible: true };
+          controls.push(control);
+          item.addEventListener('click', () => {
+            control.visible = !control.visible;
+            item.setAttribute('aria-pressed', String(control.visible));
+            for (const element of [group, axis]) {
+              element.setAttribute('visibility', control.visible ? 'visible' : 'hidden');
+              element.setAttribute('aria-hidden', String(!control.visible));
+            }
+            layoutAxes();
+          });
+        });
+        ticks.forEach((time, index) => svg.append(node('text', {
+          x: timeX(time), y: H - 20, 'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
+          'text-anchor': ticks.length === 1 ? 'middle' : index === 0 ? 'start' : index === ticks.length - 1 ? 'end' : 'middle',
+        }, formatTime(time))));
+        $('chart-panel').hidden = false;
+      }
+
+      function renderReading(data, showHeading, time) {
         const card = $('reading-template').content.firstElementChild.cloneNode(true);
         const field = name => card.querySelector(`[data-field="${name}"]`);
         card.dataset.packetIndex = String(data.packetIndex);
-        card.setAttribute('aria-label', `Measurement #${data.measurement} at ${data.timestamp} s`);
+        card.setAttribute('aria-label', `Measurement #${data.measurement} at ${time}`);
         field('record-heading').hidden = !showHeading;
         field('measurement').textContent = String(data.measurement);
-        field('timestamp').textContent = `${data.timestamp} s`;
+        field('timestamp').textContent = time;
         field('humidity').textContent = `${data.humidity.toFixed(1)} %RH`;
         field('co2-card').hidden = data.co2 === null;
         field('lux-reading').hidden = data.lux === null;
         field('lux').textContent = data.lux === null ? '—' : `${data.lux} lux`;
         field('tilt-card').hidden = data.x === null;
-        const angle = data.x === null || Math.hypot(data.x, data.y, data.z) === 0
-          ? null : Math.atan2(Math.hypot(data.x, data.y), data.z) * 180 / Math.PI;
+        const angle = tiltAngle(data);
         field('tilt').textContent = angle === null ? '—' : `${Number(angle.toFixed(1))}°`;
         field('pressure-reading').hidden = data.pressure === null;
         field('temp').textContent = `${data.temp} °C`;
@@ -167,11 +350,18 @@
         if (!fragment) return;
         const data = parse(decodeBase64(fragment));
         $('sensor-id').textContent = String(data.deviceId).padStart(4, '0');
-        $('values').replaceChildren(...data.records.map(record => renderReading(record, data.records.length > 1)));
         const last = data.records.at(-1);
+        const now = Date.now();
+        const timeOffset = last ? now - last.timestamp * 1000 : 0;
+        const previous = data.records.slice(0, -1);
+        $('history-values').replaceChildren(...previous.map(record => renderReading(record, true, formatTime(timeOffset + record.timestamp * 1000))));
+        $('history').hidden = previous.length === 0;
+        $('history-summary').textContent = `Previous readings (${previous.length})`;
         if (last) {
+          drawChart(data.records, timeOffset);
+          $('values').replaceChildren(renderReading(last, false, formatTime(now)));
           $('measurement').textContent = String(last.measurement);
-          $('timestamp').textContent = `${last.timestamp} s`;
+          $('timestamp').textContent = formatTime(now);
           $('measurement-info').hidden = false;
           $('values').hidden = false;
         } else {
