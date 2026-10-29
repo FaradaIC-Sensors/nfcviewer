@@ -44,10 +44,12 @@
     .chart-layout { display: flex; align-items: flex-start; min-width: 0; }
     .chart-axes { display: block; flex: 0 1 auto; width: var(--axis-width); min-width: 0; height: 390px; }
     #chart-scroll { flex: 1 1 0; min-width: 96px; overflow-x: auto; overflow-y: hidden; }
-    #chart { display: block; width: 100%; min-width: 720px; height: 390px; }
+    #chart { display: block; height: 390px; }
     .chart-grid { stroke: CanvasText; stroke-opacity: .15; }
     .chart-label { fill: CanvasText; }
-    .chart-point:focus { outline: none; stroke: CanvasText; stroke-width: 2; }
+    .chart-zoom { display: flex; justify-content: center; gap: .5rem; padding: 10px 16px; }
+    .chart-zoom button { min-width: 40px; padding: 4px 10px; border: 1px solid color-mix(in srgb, CanvasText 35%, Canvas); border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 1.25rem; cursor: pointer; }
+    .chart-zoom button:disabled { opacity: .35; cursor: default; }
     @media (max-width: 560px) {
       body { padding: 14px; }
       .chart-axes { width: calc(var(--axis-width) * .75); }
@@ -67,6 +69,10 @@
         <svg id="chart" preserveAspectRatio="none" role="img" aria-label="History of sensor readings"></svg>
       </div>
       <svg id="chart-right-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Right Y scales"></svg>
+    </div>
+    <div class="chart-zoom" role="group" aria-label="Time zoom">
+      <button id="chart-zoom-in" type="button" aria-label="Zoom in time" title="Zoom in time">+</button>
+      <button id="chart-zoom-out" type="button" aria-label="Zoom out time" title="Zoom out time">−</button>
     </div>
   </section>
   <details id="history" hidden>
@@ -203,15 +209,23 @@
         const start = new Date(startTime);
         const firstTime = startTime - ((start.getMinutes() % 10) * 60 + start.getSeconds()) * 1000 - start.getMilliseconds();
         const latestTime = timeOffset + ordered.at(-1).timestamp * 1000;
-        const intervals = Math.max(1, Math.ceil((latestTime - firstTime) / stepX));
+        const intervals = Math.max(2, Math.ceil((latestTime - firstTime) / stepX));
         const lastTime = firstTime + intervals * stepX;
-        const W = Math.max(720, intervals * 128 + 8);
-        const timeX = time => 4 + (time - firstTime) / (lastTime - firstTime) * (W - 8);
+        let W = 720;
+        let zoom = 1;
+        const minZoom = Math.min(1, 2 / intervals), maxZoom = 8;
+        const horizontalUpdates = [];
+        const horizontalNode = (tag, attrs, position, text = '') => {
+          const el = node(tag, attrs, text);
+          const update = () => Object.entries(position()).forEach(([key, value]) => el.setAttribute(key, value));
+          horizontalUpdates.push(update);
+          update();
+          return el;
+        };
+        const timePadding = 32;
+        const timeX = time => timePadding + (time - firstTime) / (lastTime - firstTime) * (W - 2 * timePadding);
         const x = timestamp => timeX(timeOffset + timestamp * 1000);
         const ticks = Array.from({ length: intervals + 1 }, (_, i) => firstTime + i * stepX);
-        const number = value => String(Number(value.toFixed(2)));
-        svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-        svg.setAttribute('style', `min-width: ${W}px`);
         leftAxes.setAttribute('viewBox', `0 0 ${L} ${H}`);
         rightAxes.setAttribute('viewBox', `0 0 ${R} ${H}`);
         leftAxes.setAttribute('style', `--axis-width: ${L}px`);
@@ -222,13 +236,13 @@
         svg.replaceChildren(
           node('title', {}, 'History of sensor readings'),
           node('desc', {}, `${records.length} measurements on one plot with a shared local-time axis and a separate vertical scale for each metric. Unavailable readings leave gaps.`),
-          node('rect', { x: 0, y: plotTop, width: W, height: plotBottom - plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }),
+          horizontalNode('rect', { x: 0, y: plotTop, height: plotBottom - plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }, () => ({ width: W })),
         );
         for (let i = 1; i < 4; i++) {
           const py = plotTop + (plotBottom - plotTop) * i / 4;
-          svg.append(node('line', { x1: 0, x2: W, y1: py, y2: py, class: 'chart-grid' }));
+          svg.append(horizontalNode('line', { x1: 0, y1: py, y2: py, class: 'chart-grid' }, () => ({ x2: W })));
         }
-        ticks.forEach(time => svg.append(node('line', { x1: timeX(time), x2: timeX(time), y1: plotTop, y2: plotBottom, class: 'chart-grid' })));
+        ticks.forEach(time => svg.append(horizontalNode('line', { y1: plotTop, y2: plotBottom, class: 'chart-grid' }, () => ({ x1: timeX(time), x2: timeX(time) }))));
         curves.forEach((s, index) => {
           const values = s.points.filter(p => p.value !== null).map(p => p.value);
           let min = Math.min(...values), max = Math.max(...values);
@@ -271,22 +285,22 @@
             axis.append(node('text', { x: labelX, y: py + 4, fill: s.color, 'text-anchor': anchor, 'font-size': 11, 'data-axis-value': value }, String(value)));
           }
           (left ? leftAxes : rightAxes).append(axis);
-          let path = '', connected = false;
-          const markers = [];
+          const pathPoints = [];
           s.points.forEach(({ record, value }) => {
-            if (value === null) { connected = false; return; }
-            const px = x(record.timestamp), py = y(value);
-            path += `${connected ? 'L' : 'M'}${px.toFixed(2)},${py.toFixed(2)} `;
-            connected = true;
-            const label = `#${record.measurement} · ${formatTime(timeOffset + record.timestamp * 1000)} · ${s.label}: ${number(value)} ${s.unit}`;
-            const point = node('circle', {
-              cx: px, cy: py, r: 4, fill: s.color, class: 'chart-point', tabindex: 0, role: 'img', 'aria-label': label,
-              'data-value': value, 'data-timestamp': record.timestamp, 'data-packet-index': record.packetIndex,
-            });
-            point.append(node('title', {}, label));
-            markers.push(point);
+            if (value === null) { pathPoints.push(null); return; }
+            const py = y(value);
+            pathPoints.push({ timestamp: record.timestamp, py });
           });
-          group.append(node('path', { d: path.trim(), fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }), ...markers);
+          group.append(horizontalNode('path', { fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }, () => {
+            let connected = false;
+            const segments = pathPoints.map(point => {
+              if (!point) { connected = false; return ''; }
+              const command = connected ? 'L' : 'M';
+              connected = true;
+              return `${command}${x(point.timestamp).toFixed(2)},${point.py.toFixed(2)}`;
+            });
+            return { d: segments.filter(Boolean).join(' ') };
+          }));
           svg.append(group);
           const control = { axis, axisX, left, visible: true };
           controls.push(control);
@@ -298,13 +312,49 @@
               element.setAttribute('aria-hidden', String(!control.visible));
             }
             layoutAxes();
+            resizeChart();
           });
         });
-        ticks.forEach((time, index) => svg.append(node('text', {
-          x: timeX(time), y: H - 20, 'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
-          'text-anchor': ticks.length === 1 ? 'middle' : index === 0 ? 'start' : index === ticks.length - 1 ? 'end' : 'middle',
-        }, formatTime(time))));
+        const timeLabels = [];
+        ticks.forEach(time => {
+          const formatted = formatTime(time);
+          const label = horizontalNode('text', {
+            y: H - 28, 'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
+            'text-anchor': 'middle', 'aria-label': formatted,
+          }, () => ({ x: timeX(time) }), formatted);
+          label.replaceChildren(
+            horizontalNode('tspan', { dy: 0 }, () => ({ x: timeX(time) }), formatted.slice(0, 5) + ' '),
+            horizontalNode('tspan', { dy: 14 }, () => ({ x: timeX(time) }), formatted.slice(6)),
+          );
+          svg.append(label);
+          timeLabels.push(label);
+        });
         $('chart-panel').hidden = false;
+        const viewport = $('chart-scroll');
+        const resizeChart = () => {
+          // At the initial zoom, two ten-minute intervals fill the visible plot.
+          const width = viewport.clientWidth;
+          if (!width) return;
+          W = (width - 2 * timePadding) * intervals / 2 * zoom + 2 * timePadding;
+          svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+          svg.setAttribute('style', `width: ${W}px`);
+          horizontalUpdates.forEach(update => update());
+          const labelStride = Math.ceil(1 / zoom);
+          timeLabels.forEach((label, index) => label.setAttribute('visibility', index % labelStride === 0 ? 'visible' : 'hidden'));
+          $('chart-zoom-in').disabled = zoom >= maxZoom;
+          $('chart-zoom-out').disabled = zoom <= minZoom;
+        };
+        const changeZoom = factor => {
+          const width = viewport.clientWidth;
+          const center = ((viewport.scrollLeft || 0) + width / 2 - timePadding) / (W - 2 * timePadding);
+          zoom = Math.max(minZoom, Math.min(maxZoom, zoom * factor));
+          resizeChart();
+          viewport.scrollLeft = Math.max(0, Math.min(W - width, timePadding + center * (W - 2 * timePadding) - width / 2));
+        };
+        $('chart-zoom-in').addEventListener('click', () => changeZoom(2));
+        $('chart-zoom-out').addEventListener('click', () => changeZoom(.5));
+        resizeChart();
+        new ResizeObserver(resizeChart).observe(viewport);
       }
 
       function renderReading(data, showHeading, time) {
