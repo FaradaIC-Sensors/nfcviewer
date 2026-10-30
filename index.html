@@ -400,15 +400,16 @@
         if (!fragment) return;
         const data = parse(decodeBase64(fragment));
         $('sensor-id').textContent = String(data.deviceId).padStart(4, '0');
-        const last = data.records.at(-1);
+        const records = [...data.records].sort((a, b) => a.timestamp - b.timestamp);
+        const last = records.at(-1);
         const now = Date.now();
         const timeOffset = last ? now - last.timestamp * 1000 : 0;
-        const previous = data.records.slice(0, -1);
+        const previous = records.slice(0, -1);
         $('history-values').replaceChildren(...previous.map(record => renderReading(record, true, formatTime(timeOffset + record.timestamp * 1000))));
         $('history').hidden = previous.length === 0;
         $('history-summary').textContent = `Previous readings (${previous.length})`;
         if (last) {
-          drawChart(data.records, timeOffset);
+          drawChart(records, timeOffset);
           $('values').replaceChildren(renderReading(last, false, formatTime(now)));
           $('measurement').textContent = String(last.measurement);
           $('timestamp').textContent = formatTime(now);
