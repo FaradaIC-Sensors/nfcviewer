@@ -34,17 +34,18 @@
     .record-heading { margin-bottom: .75rem; font-size: .9rem; opacity: .75; }
     #history > summary { cursor: pointer; font-size: .9rem; }
     [hidden] { display: none !important; }
-    #chart-panel { margin-bottom: 20px; overflow: hidden; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; background: color-mix(in srgb, CanvasText 3%, Canvas); }
-    .chart-legend { display: flex; flex-wrap: wrap; gap: .5rem 1rem; padding: 12px 16px; font-size: .8rem; font-weight: 600; }
-    .chart-legend-item { display: inline-flex; align-items: center; gap: .4rem; padding: 4px 8px; border: 1px solid currentColor; border-radius: 5px; font: inherit; color: var(--series-color); background: transparent; cursor: pointer; }
+    #chart-panel { margin-bottom: 20px; overflow: hidden; }
+    .chart-legend { grid-column: 2; grid-row: 1; z-index: 1; display: flex; justify-content: center; gap: 4px; font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; }
+    .chart-legend-item { display: inline-flex; align-items: center; gap: 4px; font: inherit; color: var(--series-color); }
     .chart-legend-item[aria-pressed="false"] { color: #808080; }
     .chart-legend-item:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
-    .chart-swatch { width: 20px; border-top: 2px solid currentColor; }
+    .chart-swatch { width: 10px; border-top: 2px solid currentColor; }
     .chart-swatch.dashed { border-top-style: dashed; }
-    .chart-layout { display: flex; align-items: flex-start; min-width: 0; }
-    .chart-axes { display: block; flex: 0 1 auto; width: var(--axis-width); min-width: 0; height: 390px; }
-    #chart-scroll { flex: 1 1 0; min-width: 96px; overflow-x: auto; overflow-y: hidden; }
-    #chart { display: block; height: 390px; }
+    .chart-layout { display: grid; grid-template-columns: auto minmax(96px, 1fr) auto; align-items: start; min-width: 0; }
+    .chart-axes { grid-column: 1; grid-row: 1; display: block; width: var(--axis-width); min-width: 0; }
+    .chart-axes:last-child { grid-column: 3; }
+    .chart-scroll { grid-column: 2; grid-row: 1; min-width: 96px; overflow-x: auto; overflow-y: hidden; touch-action: pan-x pan-y; }
+    .chart-plot { display: block; }
     .chart-grid { stroke: CanvasText; stroke-opacity: .15; }
     .chart-label { fill: CanvasText; }
     .chart-zoom { display: flex; justify-content: center; gap: .5rem; padding: 10px 16px; }
@@ -62,14 +63,36 @@
 
   <section id="values" class="values" aria-label="Latest reading" hidden></section>
   <section id="chart-panel" aria-label="Measurement history chart" hidden>
-    <div id="chart-legend" class="chart-legend" aria-label="Chart legend"></div>
-    <div class="chart-layout">
-      <svg id="chart-left-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Left Y scales"></svg>
-      <div id="chart-scroll" tabindex="0" role="region" aria-label="Scrollable measurement history">
-        <svg id="chart" preserveAspectRatio="none" role="img" aria-label="History of sensor readings"></svg>
+    <section class="chart-section" aria-label="O₂, CO₂ and Temperature">
+      <div class="chart-layout">
+        <div id="chart-legend" class="chart-legend" aria-label="Chart legend"></div>
+        <svg id="chart-left-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="O₂ and CO₂, %"></svg>
+        <div id="chart-scroll" class="chart-scroll" tabindex="0" role="region" aria-label="Scrollable O₂, CO₂ and Temperature history">
+          <svg id="chart" class="chart-plot" preserveAspectRatio="none" role="img" aria-label="O₂, CO₂ and Temperature history"></svg>
+        </div>
+        <svg id="chart-right-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Temperature, °C"></svg>
       </div>
-      <svg id="chart-right-axes" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Right Y scales"></svg>
-    </div>
+    </section>
+    <section class="chart-section" aria-label="Pressure and RH">
+      <div class="chart-layout">
+        <div id="chart-legend-2" class="chart-legend" aria-label="Chart legend"></div>
+        <svg id="chart-left-axes-2" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Pressure, hPa"></svg>
+        <div id="chart-scroll-2" class="chart-scroll" tabindex="0" role="region" aria-label="Scrollable Pressure and RH history">
+          <svg id="chart-2" class="chart-plot" preserveAspectRatio="none" role="img" aria-label="Pressure and RH history"></svg>
+        </div>
+        <svg id="chart-right-axes-2" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Humidity, %RH"></svg>
+      </div>
+    </section>
+    <section class="chart-section" aria-label="Illuminance and Tilt">
+      <div class="chart-layout">
+        <div id="chart-legend-3" class="chart-legend" aria-label="Chart legend"></div>
+        <svg id="chart-left-axes-3" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Illuminance, lux"></svg>
+        <div id="chart-scroll-3" class="chart-scroll" tabindex="0" role="region" aria-label="Scrollable Illuminance and Tilt history">
+          <svg id="chart-3" class="chart-plot" preserveAspectRatio="none" role="img" aria-label="Illuminance and Tilt history"></svg>
+        </div>
+        <svg id="chart-right-axes-3" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Tilt, degrees"></svg>
+      </div>
+    </section>
     <div class="chart-zoom" role="group" aria-label="Time zoom">
       <button id="chart-zoom-in" type="button" aria-label="Zoom in time" title="Zoom in time">+</button>
       <button id="chart-zoom-out" type="button" aria-label="Zoom out time" title="Zoom out time">−</button>
@@ -166,9 +189,6 @@
       }
 
       function drawChart(records, timeOffset) {
-        const svg = $('chart');
-        const leftAxes = $('chart-left-axes'), rightAxes = $('chart-right-axes');
-        const legend = $('chart-legend');
         const node = (tag, attrs = {}, text = '') => {
           const el = document.createElementNS('http://www.w3.org/2000/svg', tag);
           Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
@@ -176,33 +196,28 @@
           return el;
         };
         const series = [
-          { key: 'pressure', label: 'Pressure', unit: 'hPa', color: '#22c55e', value: r => r.pressure === null ? null : r.pressure / 100 },
-          { key: 'temp', label: 'Temperature', unit: '°C', color: '#ef4444', value: r => r.temp },
-          { key: 'humidity', label: 'Humidity', unit: '%RH', color: '#3b82f6', value: r => r.humidity },
-          { key: 'tilt', label: 'Tilt', unit: '°', color: 'CanvasText', dash: '6 4', value: tiltAngle },
-          { key: 'lux', label: 'Illuminance', unit: 'lux', color: '#facc15', value: r => r.lux },
-          { key: 'co2', label: 'CO₂', unit: '%', color: 'CanvasText', value: r => r.co2 },
           { key: 'o2', label: 'O₂', unit: '%', color: '#38bdf8', value: r => r.o2 },
+          { key: 'co2', label: 'CO₂', unit: '%', color: 'CanvasText', value: r => r.co2 },
+          { key: 'temp', label: 'Temperature', unit: '°C', color: '#ef4444', value: r => r.temp },
+          { key: 'pressure', label: 'Pressure', unit: 'hPa', color: '#22c55e', value: r => r.pressure === null ? null : r.pressure / 100 },
+          { key: 'humidity', label: 'RH', unit: '%RH', color: '#3b82f6', value: r => r.humidity },
+          { key: 'lux', label: 'Illuminance', unit: 'lux', color: '#facc15', value: r => r.lux },
+          { key: 'tilt', label: 'Tilt', unit: '°', color: 'CanvasText', dash: '6 4', value: tiltAngle },
         ];
+        const charts = [
+          { suffix: '', axes: [['o2', 'co2'], ['temp']] },
+          { suffix: '-2', axes: [['pressure'], ['humidity']] },
+          { suffix: '-3', axes: [['lux'], ['tilt']] },
+        ].map((chart, index, all) => ({
+          ...chart, svg: $(`chart${chart.suffix}`), viewport: $(`chart-scroll${chart.suffix}`),
+          // Reserve time-label space only below the bottom chart.
+          height: index === all.length - 1 ? 390 : 344,
+        }));
         const ordered = [...records].sort((a, b) => a.timestamp - b.timestamp || a.packetIndex - b.packetIndex);
         const curves = series.map(s => ({ ...s, points: ordered.map(record => ({ record, value: s.value(record) })) }))
           .filter(s => s.points.some(p => p.value !== null));
-        const H = 390, axisGap = 46;
-        const L = Math.ceil(curves.length / 2) * axisGap + 12;
-        const R = Math.floor(curves.length / 2) * axisGap + 12;
-        const controls = [];
-        const layoutAxes = () => {
-          for (const [container, left] of [[leftAxes, true], [rightAxes, false]]) {
-            const active = controls.filter(control => control.left === left && control.visible);
-            const width = active.length ? active.length * axisGap + 12 : 0;
-            container.setAttribute('viewBox', `0 0 ${Math.max(1, width)} ${H}`);
-            container.setAttribute('style', `--axis-width: ${width}px`);
-            active.forEach((control, index) => {
-              const axisX = left ? width - 1 - index * axisGap : 1 + index * axisGap;
-              control.axis.setAttribute('transform', `translate(${axisX - control.axisX}, 0)`);
-            });
-          }
-        };
+        // Reserve identical axis gutters even when a metric is unavailable, keeping time aligned.
+        const axisWidth = 76;
         const plotTop = 24, plotBottom = 338;
         const stepX = 10 * 60 * 1000;
         const startTime = timeOffset + ordered[0].timestamp * 1000;
@@ -212,8 +227,8 @@
         const intervals = Math.max(2, Math.ceil((latestTime - firstTime) / stepX));
         const lastTime = firstTime + intervals * stepX;
         let W = 720;
-        let zoom = 1;
         const minZoom = Math.min(1, 2 / intervals), maxZoom = 8;
+        let zoom = minZoom;
         const horizontalUpdates = [];
         const horizontalNode = (tag, attrs, position, text = '') => {
           const el = node(tag, attrs, text);
@@ -226,133 +241,182 @@
         const timeX = time => timePadding + (time - firstTime) / (lastTime - firstTime) * (W - 2 * timePadding);
         const x = timestamp => timeX(timeOffset + timestamp * 1000);
         const ticks = Array.from({ length: intervals + 1 }, (_, i) => firstTime + i * stepX);
-        leftAxes.setAttribute('viewBox', `0 0 ${L} ${H}`);
-        rightAxes.setAttribute('viewBox', `0 0 ${R} ${H}`);
-        leftAxes.setAttribute('style', `--axis-width: ${L}px`);
-        rightAxes.setAttribute('style', `--axis-width: ${R}px`);
-        leftAxes.replaceChildren(node('title', {}, 'Left Y scales'));
-        rightAxes.replaceChildren(node('title', {}, 'Right Y scales'));
-        legend.replaceChildren();
-        svg.replaceChildren(
-          node('title', {}, 'History of sensor readings'),
-          node('desc', {}, `${records.length} measurements on one plot with a shared local-time axis and a separate vertical scale for each metric. Unavailable readings leave gaps.`),
-          horizontalNode('rect', { x: 0, y: plotTop, height: plotBottom - plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }, () => ({ width: W })),
-        );
-        for (let i = 1; i < 4; i++) {
-          const py = plotTop + (plotBottom - plotTop) * i / 4;
-          svg.append(horizontalNode('line', { x1: 0, y1: py, y2: py, class: 'chart-grid' }, () => ({ x2: W })));
-        }
-        ticks.forEach(time => svg.append(horizontalNode('line', { y1: plotTop, y2: plotBottom, class: 'chart-grid' }, () => ({ x1: timeX(time), x2: timeX(time) }))));
-        curves.forEach((s, index) => {
-          const values = s.points.filter(p => p.value !== null).map(p => p.value);
-          let min = Math.min(...values), max = Math.max(...values);
-          const pad = min === max ? Math.max(Math.abs(min) * .1, 1) : (max - min) * .08;
-          min -= pad;
-          max += pad;
-          const rawStep = Math.max(1, (max - min) / 4);
-          const magnitude = 10 ** Math.floor(Math.log10(rawStep));
-          const step = [1, 2, 5, 10].map(factor => factor * magnitude).find(value => value >= rawStep);
-          min = Math.floor(min / step) * step;
-          max = Math.ceil(max / step) * step;
-          const y = value => plotBottom - (value - min) / (max - min) * (plotBottom - plotTop);
-          const left = index % 2 === 0;
-          const axisX = left ? L - 1 - Math.floor(index / 2) * axisGap : 1 + Math.floor(index / 2) * axisGap;
-          const labelX = axisX + (left ? -8 : 8);
-          const anchor = left ? 'end' : 'start';
-          const item = document.createElement('button');
-          item.setAttribute('class', 'chart-legend-item');
-          item.setAttribute('type', 'button');
-          item.setAttribute('style', `--series-color: ${s.color}`);
-          item.setAttribute('data-toggle-series', s.key);
-          item.setAttribute('aria-pressed', 'true');
-          item.setAttribute('title', `Show/hide ${s.label}`);
-          const swatch = document.createElement('span');
-          swatch.setAttribute('class', `chart-swatch${s.dash ? ' dashed' : ''}`);
-          swatch.setAttribute('aria-hidden', 'true');
-          const label = document.createElement('span');
-          label.textContent = s.label;
-          item.append(swatch, label);
-          legend.append(item);
-          const group = node('g', { 'data-series': s.key, role: 'group', 'aria-label': `${s.label}, ${s.unit}` });
-          const axis = node('g', { 'data-axis-series': s.key, role: 'group', 'aria-label': `${s.label}, ${s.unit}` });
-          axis.append(
-            node('line', { x1: axisX, x2: axisX, y1: plotTop, y2: plotBottom, stroke: s.color, 'data-y-axis': s.key }),
-            node('text', { x: labelX, y: plotTop - 12, fill: s.color, 'text-anchor': anchor, 'font-size': 11, 'font-weight': 600 }, s.unit),
-          );
-          for (let value = min; value <= max; value += step) {
-            const py = y(value);
-            axis.append(node('line', { x1: axisX, x2: axisX + (left ? -4 : 4), y1: py, y2: py, stroke: s.color }));
-            axis.append(node('text', { x: labelX, y: py + 4, fill: s.color, 'text-anchor': anchor, 'font-size': 11, 'data-axis-value': value }, String(value)));
-          }
-          (left ? leftAxes : rightAxes).append(axis);
-          const pathPoints = [];
-          s.points.forEach(({ record, value }) => {
-            if (value === null) { pathPoints.push(null); return; }
-            const py = y(value);
-            pathPoints.push({ timestamp: record.timestamp, py });
-          });
-          group.append(horizontalNode('path', { fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }, () => {
-            let connected = false;
-            const segments = pathPoints.map(point => {
-              if (!point) { connected = false; return ''; }
-              const command = connected ? 'L' : 'M';
-              connected = true;
-              return `${command}${x(point.timestamp).toFixed(2)},${point.py.toFixed(2)}`;
-            });
-            return { d: segments.filter(Boolean).join(' ') };
-          }));
-          svg.append(group);
-          const control = { axis, axisX, left, visible: true };
-          controls.push(control);
-          item.addEventListener('click', () => {
-            control.visible = !control.visible;
-            item.setAttribute('aria-pressed', String(control.visible));
-            for (const element of [group, axis]) {
-              element.setAttribute('visibility', control.visible ? 'visible' : 'hidden');
-              element.setAttribute('aria-hidden', String(!control.visible));
-            }
-            layoutAxes();
-            resizeChart();
-          });
-        });
         const timeLabels = [];
-        ticks.forEach(time => {
-          const formatted = formatTime(time);
-          const label = horizontalNode('text', {
-            y: H - 28, 'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
-            'text-anchor': 'middle', 'aria-label': formatted,
-          }, () => ({ x: timeX(time) }), formatted);
-          label.replaceChildren(
-            horizontalNode('tspan', { dy: 0 }, () => ({ x: timeX(time) }), formatted.slice(0, 5) + ' '),
-            horizontalNode('tspan', { dy: 14 }, () => ({ x: timeX(time) }), formatted.slice(6)),
+        charts.forEach(({ suffix, svg, axes, height }) => {
+          const legend = $(`chart-legend${suffix}`);
+          svg.setAttribute('height', height);
+          legend.replaceChildren();
+          svg.replaceChildren(
+            node('title', {}, 'History of sensor readings'),
+            node('desc', {}, `${records.length} measurements. Time zoom and scrolling are synchronized across all three charts. Unavailable readings leave gaps.`),
+            horizontalNode('rect', { x: 0, y: plotTop, height: plotBottom - plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }, () => ({ width: W })),
           );
-          svg.append(label);
-          timeLabels.push(label);
+          for (let i = 1; i < 4; i++) {
+            const py = plotTop + (plotBottom - plotTop) * i / 4;
+            svg.append(horizontalNode('line', { x1: 0, y1: py, y2: py, class: 'chart-grid' }, () => ({ x2: W })));
+          }
+          ticks.forEach(time => svg.append(horizontalNode('line', { y1: plotTop, y2: plotBottom, class: 'chart-grid' }, () => ({ x1: timeX(time), x2: timeX(time) }))));
+          axes.forEach((keys, side) => {
+            const left = side === 0;
+            const container = $(`chart-${left ? 'left' : 'right'}-axes${suffix}`);
+            container.setAttribute('viewBox', `0 0 ${axisWidth} ${height}`);
+            container.setAttribute('height', height);
+            container.setAttribute('style', `--axis-width: ${axisWidth}px`);
+            container.replaceChildren(node('title', {}, `${left ? 'Left' : 'Right'} Y scale`));
+            const axisCurves = curves.filter(s => keys.includes(s.key));
+            if (!axisCurves.length) return;
+            // O₂ and CO₂ share one range and one physical axis on the first chart.
+            const values = axisCurves.flatMap(s => s.points.filter(p => p.value !== null).map(p => p.value));
+            let min = Math.min(...values), max = Math.max(...values);
+            const pad = min === max ? Math.max(Math.abs(min) * .1, 1) : (max - min) * .08;
+            min -= pad;
+            max += pad;
+            const rawStep = Math.max(1, (max - min) / 4);
+            const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+            const step = [1, 2, 5, 10].map(factor => factor * magnitude).find(value => value >= rawStep);
+            min = Math.floor(min / step) * step;
+            max = Math.ceil(max / step) * step;
+            const y = value => plotBottom - (value - min) / (max - min) * (plotBottom - plotTop);
+            const axisX = left ? axisWidth - 1 : 1;
+            const labelX = axisX + (left ? -8 : 8);
+            const anchor = left ? 'end' : 'start';
+            const color = axisCurves.length > 1 ? 'CanvasText' : axisCurves[0].color;
+            const unit = axisCurves[0].unit;
+            const axis = node('g', { 'data-axis-series': keys.join(' '), role: 'group', 'aria-label': `${axisCurves.map(s => s.label).join(', ')}, ${unit}` });
+            axis.append(
+              node('line', { x1: axisX, x2: axisX, y1: plotTop, y2: plotBottom, stroke: color, 'data-y-axis': keys.join(' ') }),
+              node('text', { x: labelX, y: plotTop - 12, fill: color, 'text-anchor': anchor, 'font-size': 11, 'font-weight': 600 }, unit),
+            );
+            for (let value = min; value <= max; value += step) {
+              const py = y(value);
+              axis.append(node('line', { x1: axisX, x2: axisX + (left ? -4 : 4), y1: py, y2: py, stroke: color }));
+              axis.append(node('text', { x: labelX, y: py + 4, fill: color, 'text-anchor': anchor, 'font-size': 11, 'data-axis-value': value }, String(value)));
+            }
+            container.append(axis);
+            axisCurves.forEach(s => {
+              const item = document.createElement('span');
+              item.setAttribute('class', 'chart-legend-item');
+              item.setAttribute('style', `--series-color: ${s.color}`);
+              // Series visibility controls are temporarily disabled.
+              // Use a button instead of a span and restore this attribute and handler to enable them.
+              // item.setAttribute('type', 'button');
+              // item.setAttribute('aria-pressed', 'true');
+              const swatch = document.createElement('span');
+              swatch.setAttribute('class', `chart-swatch${s.dash ? ' dashed' : ''}`);
+              swatch.setAttribute('aria-hidden', 'true');
+              const label = document.createElement('span');
+              label.textContent = s.label;
+              item.append(swatch, label);
+              legend.append(item);
+              const group = node('g', { 'data-series': s.key, role: 'group', 'aria-label': `${s.label}, ${s.unit}` });
+              const pathPoints = s.points.map(({ record, value }) => value === null ? null : { timestamp: record.timestamp, py: y(value) });
+              group.append(horizontalNode('path', { fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }, () => {
+                let connected = false;
+                const segments = pathPoints.map(point => {
+                  if (!point) { connected = false; return ''; }
+                  const command = connected ? 'L' : 'M';
+                  connected = true;
+                  return `${command}${x(point.timestamp).toFixed(2)},${point.py.toFixed(2)}`;
+                });
+                return { d: segments.filter(Boolean).join(' ') };
+              }));
+              svg.append(group);
+              /*
+              item.addEventListener('click', () => {
+                const visible = group.getAttribute('visibility') !== 'hidden';
+                group.setAttribute('visibility', visible ? 'hidden' : 'visible');
+                group.setAttribute('aria-hidden', String(visible));
+                item.setAttribute('aria-pressed', String(!visible));
+              });
+              */
+            });
+          });
+          // Only the bottom chart needs labels for the shared time axis.
+          if (svg !== charts.at(-1).svg) return;
+          const labels = ticks.map(time => {
+            const formatted = formatTime(time);
+            const label = horizontalNode('text', {
+              y: height - 28, 'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
+              'text-anchor': 'middle', 'aria-label': formatted,
+            }, () => ({ x: timeX(time) }), formatted);
+            label.replaceChildren(
+              horizontalNode('tspan', { dy: 0 }, () => ({ x: timeX(time) }), formatted.slice(0, 5) + ' '),
+              horizontalNode('tspan', { dy: 14 }, () => ({ x: timeX(time) }), formatted.slice(6)),
+            );
+            svg.append(label);
+            return label;
+          });
+          timeLabels.push(labels);
         });
         $('chart-panel').hidden = false;
-        const viewport = $('chart-scroll');
+        const viewport = charts[0].viewport;
+        const syncScroll = source => {
+          for (const chart of charts) {
+            if (chart.viewport.scrollLeft !== source.scrollLeft) chart.viewport.scrollLeft = source.scrollLeft;
+          }
+        };
+        charts.forEach(chart => chart.viewport.addEventListener('scroll', () => syncScroll(chart.viewport), { passive: true }));
         const resizeChart = () => {
-          // At the initial zoom, two ten-minute intervals fill the visible plot.
+          // Open with the entire history fitted exactly to the visible width.
           const width = viewport.clientWidth;
           if (!width) return;
-          W = (width - 2 * timePadding) * intervals / 2 * zoom + 2 * timePadding;
-          svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-          svg.setAttribute('style', `width: ${W}px`);
+          W = zoom === minZoom ? width : (width - 2 * timePadding) * intervals / 2 * zoom + 2 * timePadding;
+          charts.forEach(chart => {
+            chart.svg.setAttribute('viewBox', `0 0 ${W} ${chart.height}`);
+            chart.svg.setAttribute('style', `width: ${W}px`);
+          });
           horizontalUpdates.forEach(update => update());
           const labelStride = Math.ceil(1 / zoom);
-          timeLabels.forEach((label, index) => label.setAttribute('visibility', index % labelStride === 0 ? 'visible' : 'hidden'));
+          timeLabels.forEach(labels => labels.forEach((label, index) => label.setAttribute('visibility', index % labelStride === 0 ? 'visible' : 'hidden')));
+          syncScroll(viewport);
           $('chart-zoom-in').disabled = zoom >= maxZoom;
           $('chart-zoom-out').disabled = zoom <= minZoom;
         };
-        const changeZoom = factor => {
+        const changeZoom = (factor, anchorX = viewport.clientWidth / 2, nextAnchorX = anchorX) => {
           const width = viewport.clientWidth;
-          const center = ((viewport.scrollLeft || 0) + width / 2 - timePadding) / (W - 2 * timePadding);
+          const anchorTime = ((viewport.scrollLeft || 0) + anchorX - timePadding) / (W - 2 * timePadding);
           zoom = Math.max(minZoom, Math.min(maxZoom, zoom * factor));
           resizeChart();
-          viewport.scrollLeft = Math.max(0, Math.min(W - width, timePadding + center * (W - 2 * timePadding) - width / 2));
+          viewport.scrollLeft = Math.max(0, Math.min(W - width, timePadding + anchorTime * (W - 2 * timePadding) - nextAnchorX));
+          syncScroll(viewport);
         };
         $('chart-zoom-in').addEventListener('click', () => changeZoom(2));
         $('chart-zoom-out').addEventListener('click', () => changeZoom(.5));
+        charts.forEach(({ viewport: target }) => {
+          // Trackpad pinch gestures arrive as Ctrl+wheel events in desktop browsers.
+          target.addEventListener('wheel', event => {
+            if (!event.ctrlKey) return;
+            event.preventDefault();
+            const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? target.clientWidth : 1;
+            changeZoom(Math.exp(-event.deltaY * unit * .01), event.clientX - target.getBoundingClientRect().left);
+          }, { passive: false });
+          let pinch = null;
+          const gesture = event => {
+            const [a, b] = event.touches;
+            return {
+              distance: Math.hypot(b.clientX - a.clientX, b.clientY - a.clientY),
+              center: (a.clientX + b.clientX) / 2 - target.getBoundingClientRect().left,
+            };
+          };
+          target.addEventListener('touchstart', event => {
+            pinch = null;
+            if (event.touches.length !== 2) return;
+            event.preventDefault();
+            pinch = gesture(event);
+          }, { passive: false });
+          target.addEventListener('touchmove', event => {
+            if (event.touches.length !== 2) { pinch = null; return; }
+            event.preventDefault();
+            const next = gesture(event);
+            if (pinch && pinch.distance > 0 && next.distance > 0) {
+              changeZoom(next.distance / pinch.distance, pinch.center, next.center);
+            }
+            pinch = next;
+          }, { passive: false });
+          const endPinch = () => { pinch = null; };
+          target.addEventListener('touchend', endPinch);
+          target.addEventListener('touchcancel', endPinch);
+        });
         resizeChart();
         new ResizeObserver(resizeChart).observe(viewport);
       }
