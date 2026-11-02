@@ -55,7 +55,7 @@
     .chart-zoom button:disabled { opacity: .35; cursor: default; }
     @media (max-width: 560px) {
       body { padding: 14px; }
-      .chart-axes { width: calc(var(--axis-width) * .75); }
+      #chart-panel { margin-left: -14px; margin-right: -14px; }
     }
   </style>
 </head>
@@ -204,7 +204,7 @@
           { key: 'pressure', label: 'Pressure', unit: 'hPa', color: '#22c55e', value: r => r.pressure === null ? null : r.pressure / 100 },
           { key: 'humidity', label: 'RH', unit: '%RH', color: '#3b82f6', value: r => r.humidity },
           { key: 'lux', label: 'Illuminance', unit: 'lux', color: '#facc15', value: r => r.lux },
-          { key: 'tilt', label: 'Tilt', unit: '°', color: 'CanvasText', dash: '6 4', value: tiltAngle },
+          { key: 'tilt', label: 'Tilt', unit: '°', color: 'CanvasText', value: tiltAngle },
         ];
         const charts = [
           { suffix: '', axes: [['o2', 'co2'], ['temp']] },
@@ -364,6 +364,24 @@
         };
         charts.forEach(chart => chart.viewport.addEventListener('scroll', () => syncScroll(chart.viewport), { passive: true }));
         const resizeChart = () => {
+          // On phones, reserve only the space actually occupied by axis labels.
+          const gutters = { left: axisWidth, right: axisWidth };
+          if (window.innerWidth <= 560) {
+            for (const side of ['left', 'right']) {
+              gutters[side] = Math.max(16, ...charts.map(chart => {
+                const bounds = $(`chart-${side}-axes${chart.suffix}`).getBBox();
+                if (!bounds.width) return 16;
+                return Math.ceil(side === 'left' ? axisWidth - bounds.x + 2 : bounds.x + bounds.width + 2);
+              }));
+            }
+          }
+          for (const chart of charts) {
+            for (const side of ['left', 'right']) {
+              const axis = $(`chart-${side}-axes${chart.suffix}`);
+              axis.setAttribute('style', `--axis-width: ${gutters[side]}px`);
+              axis.setAttribute('viewBox', `${side === 'left' ? axisWidth - gutters[side] : 0} 0 ${gutters[side]} ${chart.height}`);
+            }
+          }
           // Open with the entire history fitted exactly to the visible width.
           const width = viewport.clientWidth;
           if (!width) return;
@@ -382,7 +400,7 @@
             for (const side of ['left', 'right']) {
               const axis = $(`chart-${side}-axes${chart.suffix}`);
               axis.setAttribute('height', chart.height);
-              axis.setAttribute('viewBox', `0 0 ${axisWidth} ${chart.height}`);
+              axis.setAttribute('viewBox', `${side === 'left' ? axisWidth - gutters[side] : 0} 0 ${gutters[side]} ${chart.height}`);
             }
           });
           geometryUpdates.forEach(update => update());
