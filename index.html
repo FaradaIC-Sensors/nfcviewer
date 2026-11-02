@@ -45,6 +45,8 @@
     .chart-axes { grid-column: 1; grid-row: 1; display: block; width: var(--axis-width); min-width: 0; }
     .chart-axes:last-child { grid-column: 3; }
     .chart-scroll { grid-column: 2; grid-row: 1; min-width: 96px; overflow-x: auto; overflow-y: hidden; touch-action: pan-x pan-y; }
+    .chart-section:not(:last-of-type) .chart-scroll { scrollbar-width: none; }
+    .chart-section:not(:last-of-type) .chart-scroll::-webkit-scrollbar { display: none; }
     .chart-plot { display: block; }
     .chart-grid { stroke: CanvasText; stroke-opacity: .15; }
     .chart-label { fill: CanvasText; }
@@ -54,18 +56,6 @@
     @media (max-width: 560px) {
       body { padding: 14px; }
       .chart-axes { width: calc(var(--axis-width) * .75); }
-    }
-    @media (max-height: 700px) {
-      body { padding: 10px; }
-      h1 { margin-bottom: 8px; }
-      .values { margin: 8px 0; }
-      .card { padding: 8px; }
-      .record-values { gap: 6px 12px; }
-      .chart-zoom { padding: 4px 16px; }
-    }
-    @media (max-height: 480px) {
-      .chart-scroll { scrollbar-width: none; }
-      .chart-scroll::-webkit-scrollbar { display: none; }
     }
   </style>
 </head>
@@ -379,13 +369,11 @@
           if (!width) return;
           W = zoom === minZoom ? width : (width - 2 * timePadding) * intervals / 2 * zoom + 2 * timePadding;
           charts.forEach(chart => chart.svg.setAttribute('style', `width: ${W}px`));
-          const panelTop = $('chart-panel').getBoundingClientRect().top + window.scrollY;
           const screenHeight = window.visualViewport?.height || window.innerHeight;
-          const controlsHeight = $('chart-zoom-in').parentElement.offsetHeight;
           const scrollbarsHeight = charts.reduce((sum, chart) => sum + chart.viewport.offsetHeight - chart.viewport.clientHeight, 0);
-          // Each plot keeps its title row; only the bottom plot reserves time labels.
-          const available = screenHeight - panelTop - 16 - controlsHeight - scrollbarsHeight;
-          const plotHeight = Math.max(1, Math.min(314, Math.floor((available - 46) / charts.length) - plotTop - 6));
+          // Only the three charts fill the screen; the header, readings and zoom controls are outside this height.
+          const available = screenHeight - scrollbarsHeight;
+          const plotHeight = Math.max(1, Math.floor((available - 46) / charts.length) - plotTop - 6);
           plotBottom = plotTop + plotHeight;
           charts.forEach((chart, index) => {
             chart.height = plotBottom + (index === charts.length - 1 ? 52 : 6);
@@ -452,7 +440,6 @@
         resizeChart();
         const observer = new ResizeObserver(resizeChart);
         observer.observe(viewport);
-        observer.observe($('values'));
         window.addEventListener('resize', resizeChart);
         window.visualViewport?.addEventListener('resize', resizeChart);
       }
