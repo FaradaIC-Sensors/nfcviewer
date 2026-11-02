@@ -55,6 +55,18 @@
       body { padding: 14px; }
       .chart-axes { width: calc(var(--axis-width) * .75); }
     }
+    @media (max-height: 700px) {
+      body { padding: 10px; }
+      h1 { margin-bottom: 8px; }
+      .values { margin: 8px 0; }
+      .card { padding: 8px; }
+      .record-values { gap: 6px 12px; }
+      .chart-zoom { padding: 4px 16px; }
+    }
+    @media (max-height: 480px) {
+      .chart-scroll { scrollbar-width: none; }
+      .chart-scroll::-webkit-scrollbar { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -218,7 +230,8 @@
           .filter(s => s.points.some(p => p.value !== null));
         // Reserve identical axis gutters even when a metric is unavailable, keeping time aligned.
         const axisWidth = 76;
-        const plotTop = 24, plotBottom = 338;
+        const plotTop = 24;
+        let plotBottom = 338;
         const stepX = 10 * 60 * 1000;
         const startTime = timeOffset + ordered[0].timestamp * 1000;
         const start = new Date(startTime);
@@ -229,11 +242,11 @@
         let W = 720;
         const minZoom = Math.min(1, 2 / intervals), maxZoom = 8;
         let zoom = minZoom;
-        const horizontalUpdates = [];
-        const horizontalNode = (tag, attrs, position, text = '') => {
+        const geometryUpdates = [];
+        const positionedNode = (tag, attrs, position, text = '') => {
           const el = node(tag, attrs, text);
           const update = () => Object.entries(position()).forEach(([key, value]) => el.setAttribute(key, value));
-          horizontalUpdates.push(update);
+          geometryUpdates.push(update);
           update();
           return el;
         };
@@ -249,13 +262,15 @@
           svg.replaceChildren(
             node('title', {}, 'History of sensor readings'),
             node('desc', {}, `${records.length} measurements. Time zoom and scrolling are synchronized across all three charts. Unavailable readings leave gaps.`),
-            horizontalNode('rect', { x: 0, y: plotTop, height: plotBottom - plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }, () => ({ width: W })),
+            positionedNode('rect', { x: 0, y: plotTop, fill: 'none', class: 'chart-grid', 'data-plot-area': '' }, () => ({ width: W, height: plotBottom - plotTop })),
           );
           for (let i = 1; i < 4; i++) {
-            const py = plotTop + (plotBottom - plotTop) * i / 4;
-            svg.append(horizontalNode('line', { x1: 0, y1: py, y2: py, class: 'chart-grid' }, () => ({ x2: W })));
+            svg.append(positionedNode('line', { x1: 0, class: 'chart-grid' }, () => {
+              const py = plotTop + (plotBottom - plotTop) * i / 4;
+              return { x2: W, y1: py, y2: py };
+            }));
           }
-          ticks.forEach(time => svg.append(horizontalNode('line', { y1: plotTop, y2: plotBottom, class: 'chart-grid' }, () => ({ x1: timeX(time), x2: timeX(time) }))));
+          ticks.forEach(time => svg.append(positionedNode('line', { y1: plotTop, class: 'chart-grid' }, () => ({ x1: timeX(time), x2: timeX(time), y2: plotBottom }))));
           axes.forEach((keys, side) => {
             const left = side === 0;
             const container = $(`chart-${left ? 'left' : 'right'}-axes${suffix}`);
@@ -284,13 +299,15 @@
             const unit = axisCurves[0].unit;
             const axis = node('g', { 'data-axis-series': keys.join(' '), role: 'group', 'aria-label': `${axisCurves.map(s => s.label).join(', ')}, ${unit}` });
             axis.append(
-              node('line', { x1: axisX, x2: axisX, y1: plotTop, y2: plotBottom, stroke: color, 'data-y-axis': keys.join(' ') }),
+              positionedNode('line', { x1: axisX, x2: axisX, y1: plotTop, stroke: color, 'data-y-axis': keys.join(' ') }, () => ({ y2: plotBottom })),
               node('text', { x: labelX, y: plotTop - 12, fill: color, 'text-anchor': anchor, 'font-size': 11, 'font-weight': 600 }, unit),
             );
             for (let value = min; value <= max; value += step) {
-              const py = y(value);
-              axis.append(node('line', { x1: axisX, x2: axisX + (left ? -4 : 4), y1: py, y2: py, stroke: color }));
-              axis.append(node('text', { x: labelX, y: py + 4, fill: color, 'text-anchor': anchor, 'font-size': 11, 'data-axis-value': value }, String(value)));
+              axis.append(positionedNode('line', { x1: axisX, x2: axisX + (left ? -4 : 4), stroke: color }, () => ({ y1: y(value), y2: y(value) })));
+              axis.append(positionedNode('text', { x: labelX, fill: color, 'text-anchor': anchor, 'font-size': 11, 'data-axis-value': value }, () => {
+                const stride = Math.max(1, Math.ceil(20 / ((plotBottom - plotTop) * step / (max - min))));
+                return { y: y(value) + 4, visibility: ((value - min) / step) % stride === 0 ? 'visible' : 'hidden' };
+              }, String(value)));
             }
             container.append(axis);
             axisCurves.forEach(s => {
@@ -309,14 +326,14 @@
               item.append(swatch, label);
               legend.append(item);
               const group = node('g', { 'data-series': s.key, role: 'group', 'aria-label': `${s.label}, ${s.unit}` });
-              const pathPoints = s.points.map(({ record, value }) => value === null ? null : { timestamp: record.timestamp, py: y(value) });
-              group.append(horizontalNode('path', { fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }, () => {
+              const pathPoints = s.points.map(({ record, value }) => value === null ? null : { timestamp: record.timestamp, value });
+              group.append(positionedNode('path', { fill: 'none', stroke: s.color, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash || 'none' }, () => {
                 let connected = false;
                 const segments = pathPoints.map(point => {
                   if (!point) { connected = false; return ''; }
                   const command = connected ? 'L' : 'M';
                   connected = true;
-                  return `${command}${x(point.timestamp).toFixed(2)},${point.py.toFixed(2)}`;
+                  return `${command}${x(point.timestamp).toFixed(2)},${y(point.value).toFixed(2)}`;
                 });
                 return { d: segments.filter(Boolean).join(' ') };
               }));
@@ -335,13 +352,13 @@
           if (svg !== charts.at(-1).svg) return;
           const labels = ticks.map(time => {
             const formatted = formatTime(time);
-            const label = horizontalNode('text', {
-              y: height - 28, 'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
+            const label = positionedNode('text', {
+              'font-size': 12, class: 'chart-label', 'data-time-label': '', 'data-time-value': time,
               'text-anchor': 'middle', 'aria-label': formatted,
-            }, () => ({ x: timeX(time) }), formatted);
+            }, () => ({ x: timeX(time), y: charts.at(-1).height - 28 }), formatted);
             label.replaceChildren(
-              horizontalNode('tspan', { dy: 0 }, () => ({ x: timeX(time) }), formatted.slice(0, 5) + ' '),
-              horizontalNode('tspan', { dy: 14 }, () => ({ x: timeX(time) }), formatted.slice(6)),
+              positionedNode('tspan', { dy: 0 }, () => ({ x: timeX(time) }), formatted.slice(0, 5) + ' '),
+              positionedNode('tspan', { dy: 14 }, () => ({ x: timeX(time) }), formatted.slice(6)),
             );
             svg.append(label);
             return label;
@@ -361,11 +378,26 @@
           const width = viewport.clientWidth;
           if (!width) return;
           W = zoom === minZoom ? width : (width - 2 * timePadding) * intervals / 2 * zoom + 2 * timePadding;
-          charts.forEach(chart => {
+          charts.forEach(chart => chart.svg.setAttribute('style', `width: ${W}px`));
+          const panelTop = $('chart-panel').getBoundingClientRect().top + window.scrollY;
+          const screenHeight = window.visualViewport?.height || window.innerHeight;
+          const controlsHeight = $('chart-zoom-in').parentElement.offsetHeight;
+          const scrollbarsHeight = charts.reduce((sum, chart) => sum + chart.viewport.offsetHeight - chart.viewport.clientHeight, 0);
+          // Each plot keeps its title row; only the bottom plot reserves time labels.
+          const available = screenHeight - panelTop - 16 - controlsHeight - scrollbarsHeight;
+          const plotHeight = Math.max(1, Math.min(314, Math.floor((available - 46) / charts.length) - plotTop - 6));
+          plotBottom = plotTop + plotHeight;
+          charts.forEach((chart, index) => {
+            chart.height = plotBottom + (index === charts.length - 1 ? 52 : 6);
+            chart.svg.setAttribute('height', chart.height);
             chart.svg.setAttribute('viewBox', `0 0 ${W} ${chart.height}`);
-            chart.svg.setAttribute('style', `width: ${W}px`);
+            for (const side of ['left', 'right']) {
+              const axis = $(`chart-${side}-axes${chart.suffix}`);
+              axis.setAttribute('height', chart.height);
+              axis.setAttribute('viewBox', `0 0 ${axisWidth} ${chart.height}`);
+            }
           });
-          horizontalUpdates.forEach(update => update());
+          geometryUpdates.forEach(update => update());
           const labelStride = Math.ceil(1 / zoom);
           timeLabels.forEach(labels => labels.forEach((label, index) => label.setAttribute('visibility', index % labelStride === 0 ? 'visible' : 'hidden')));
           syncScroll(viewport);
@@ -418,7 +450,11 @@
           target.addEventListener('touchcancel', endPinch);
         });
         resizeChart();
-        new ResizeObserver(resizeChart).observe(viewport);
+        const observer = new ResizeObserver(resizeChart);
+        observer.observe(viewport);
+        observer.observe($('values'));
+        window.addEventListener('resize', resizeChart);
+        window.visualViewport?.addEventListener('resize', resizeChart);
       }
 
       function renderReading(data, showHeading, time) {
@@ -473,12 +509,12 @@
         $('history').hidden = previous.length === 0;
         $('history-summary').textContent = `Previous readings (${previous.length})`;
         if (last) {
-          drawChart(records, timeOffset);
           $('values').replaceChildren(renderReading(last, false, formatTime(now)));
           $('measurement').textContent = String(last.measurement);
           $('timestamp').textContent = formatTime(now);
           $('measurement-info').hidden = false;
           $('values').hidden = false;
+          drawChart(records, timeOffset);
         } else {
           $('status').textContent = 'No measurements available.';
           $('status').hidden = false;
