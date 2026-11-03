@@ -5,20 +5,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Logger sensor readings</title>
   <style>
-    :root { color-scheme: light dark; font-family: system-ui, sans-serif; }
-    body { max-width: 1050px; margin: 0 auto; padding: 24px; background: Canvas; color: CanvasText; }
-    h1 { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem 1rem; flex-wrap: wrap; margin-top: 0; font-size: 1.45rem; }
-    #measurement-info { margin-left: auto; font-size: .9rem; font-weight: normal; text-align: right; }
+    :root { color-scheme: light dark; font-family: system-ui, sans-serif; scrollbar-gutter: stable; }
+    body { max-width: 1050px; margin: 0 auto; padding: 4px 24px 24px; background: Canvas; color: CanvasText; }
+    .app-header { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .5rem 1rem; margin-bottom: 4px; }
+    .app-header h1 { grid-column: 1; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    h1 { margin: 0; font-size: 1.45rem; }
+    #measurement-info { margin: 0; font-size: .9rem; font-weight: normal; text-align: left; }
+    .navigation { grid-column: 3; grid-row: 1; justify-self: end; display: flex; justify-content: flex-end; flex-wrap: nowrap; gap: 6px; }
+    .navigation a { display: inline-flex; align-items: center; justify-content: center; padding: 9px 10px; border-radius: 8px; color: inherit; text-decoration: none; }
+    .navigation a svg { width: 20px; height: 20px; }
+    .navigation a:hover { background: color-mix(in srgb, CanvasText 8%, Canvas); }
+    .navigation a[aria-current="page"] { background: color-mix(in srgb, CanvasText 14%, Canvas); font-weight: 600; }
+    .navigation a:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+    #page-content:focus { outline: none; }
+    body:has(#measurements-page:not([hidden])) { box-sizing: border-box; height: 100vh; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+    body:has(#measurements-page:not([hidden])) .app-header { flex: none; }
+    body:has(#measurements-page:not([hidden])) #page-content { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    #measurements-page, #history { display: flex; flex-direction: column; flex: 1; min-height: 0; }
+    #history-summary { flex: none; }
+    #history-values { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; align-content: start; margin-bottom: 0; }
     .status { padding: 12px 14px; border-radius: 8px; background: color-mix(in srgb, CanvasText 8%, Canvas); }
     .error { background: #ffe5e5; color: #7c1111; }
     .o2-reading.error { background: none; color: #800020; }
     .record .o2-reading strong, .record .o2-reading p { display: inline; margin: 0 .5rem 0 0; font-size: 1.05rem; font-weight: bold; line-height: normal; opacity: 1; }
-    .values { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 20px 0; }
+    .values { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; margin: 4px 0 20px; }
     .card { padding: 16px; border: 1px solid color-mix(in srgb, CanvasText 18%, Canvas); border-radius: 10px; }
+    #latest-page .card { border: none; padding-left: 20%; }
     .card small { display: block; opacity: .7; }
     .card strong { display: block; margin-top: 3px; font-size: 1.05rem; }
     .card p { font-size: .9rem; line-height: 1.5; opacity: .75; }
     .record-values { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem 1.5rem; min-width: 0; }
+    #latest-page .record-values { display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.125rem; font-size: 2rem; }
+    #latest-page .record-values > div { display: grid; grid-template-columns: 2.5rem minmax(0, 1fr); align-items: center; gap: .6rem; min-height: 2.5rem; white-space: normal; }
+    #latest-page .record-values strong, #latest-page .record-values p { display: block; margin: 0; font-size: 2.1rem; line-height: 1.2; }
+    #latest-page .reading svg { width: 2.5rem; height: 2.5rem; }
+    #latest-page .co2-reading::before, #latest-page .o2-reading::before { content: ""; width: 1rem; height: 1rem; border-radius: 50%; background: currentColor; justify-self: center; }
     .o2-reading { display: flex; align-items: center; gap: .6rem; min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
     .o2-text { min-width: 0; }
     .co2-reading::before, .o2-reading::before { content: "•"; font-size: 2em; line-height: 1; }
@@ -32,7 +53,7 @@
     .reading svg[aria-label="Humidity"] { color: #3b82f6; }
     .lux-reading svg { color: #facc15; }
     .record-heading { margin-bottom: .75rem; font-size: .9rem; opacity: .75; }
-    #history > summary { cursor: pointer; font-size: .9rem; }
+    #history-summary { margin: 0; font-size: .9rem; opacity: .75; }
     [hidden] { display: none !important; }
     #chart-panel { margin-bottom: 20px; overflow: hidden; }
     .chart-legend { grid-column: 2; grid-row: 1; z-index: 1; display: flex; justify-content: center; gap: 4px; font-size: 11px; font-weight: 600; line-height: 16px; white-space: nowrap; }
@@ -50,20 +71,61 @@
     .chart-plot { display: block; }
     .chart-grid { stroke: CanvasText; stroke-opacity: .15; }
     .chart-label { fill: CanvasText; }
-    .chart-zoom { display: flex; justify-content: center; gap: .5rem; padding: 10px 16px; }
-    .chart-zoom button { min-width: 40px; padding: 4px 10px; border: 1px solid color-mix(in srgb, CanvasText 35%, Canvas); border-radius: 5px; background: transparent; color: inherit; font: inherit; font-size: 1.25rem; cursor: pointer; }
+    .chart-zoom-slot { grid-column: 2; grid-row: 1; width: 100px; min-height: 40px; display: flex; align-items: center; justify-content: center; }
+    .chart-zoom { display: flex; justify-content: center; gap: .5rem; }
+    .chart-zoom button { display: inline-flex; align-items: center; justify-content: center; min-width: 40px; min-height: 40px; padding: 4px 10px; border: 1px solid color-mix(in srgb, CanvasText 35%, Canvas); border-radius: 5px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    .chart-zoom button svg { width: 24px; height: 24px; }
     .chart-zoom button:disabled { opacity: .35; cursor: default; }
+    @media (max-width: 760px) {
+      .app-header { column-gap: .5rem; }
+      .app-header h1 { font-size: 1.05rem; }
+    }
     @media (max-width: 560px) {
-      body { padding: 14px; }
+      body { padding: 4px 14px 14px; }
+      .app-header { column-gap: 4px; }
+      .app-header h1 { font-size: 1rem; }
+      .chart-zoom-slot { width: 64px; min-height: 32px; }
+      .chart-zoom { gap: 4px; }
+      .chart-zoom button { box-sizing: border-box; width: 30px; min-width: 0; min-height: 32px; padding: 4px; }
+      .chart-zoom button svg { width: 20px; height: 20px; }
+      .navigation { gap: 2px; }
+      .navigation a { padding: 6px 4px; }
       #chart-panel { margin-left: -14px; margin-right: -14px; }
     }
   </style>
 </head>
 <body>
-  <h1><span>Sensor: <span id="sensor-id">—</span></span><span id="measurement-info" hidden>last reading #<span id="measurement">—</span> at <span id="timestamp">—</span></span></h1>
-  <div id="status" class="status" hidden></div>
-
-  <section id="values" class="values" aria-label="Latest reading" hidden></section>
+  <header class="app-header">
+    <h1 id="sensor-heading">Sensor: <span id="sensor-id">—</span></h1>
+    <div class="chart-zoom-slot">
+      <div id="chart-zoom" class="chart-zoom" role="group" aria-label="Time zoom" hidden>
+        <button id="chart-zoom-in" type="button" aria-label="Zoom in time" title="Zoom in time" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5M7 10.5h7M10.5 7v7"/></svg>
+        </button>
+        <button id="chart-zoom-out" type="button" aria-label="Zoom out time" title="Zoom out time" disabled>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="10.5" cy="10.5" r="7.5"/><path d="m16 16 5 5M7 10.5h7"/></svg>
+        </button>
+      </div>
+    </div>
+    <nav class="navigation" aria-label="Main navigation">
+      <a id="nav-latest" href="?" aria-current="page" aria-label="Latest" title="Latest">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7" r="1" fill="currentColor" stroke="none"/></svg>
+      </a>
+      <a id="nav-charts" href="?page=charts" aria-label="Charts" title="Charts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 3v18h18M6 15l5-6 4 3 6-8"/></svg>
+      </a>
+      <a id="nav-measurements" href="?page=measurements" aria-label="Measurements" title="Measurements">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/><path d="M9 6h12M9 12h12M9 18h12"/></svg>
+      </a>
+    </nav>
+  </header>
+  <main id="page-content" tabindex="-1">
+    <div id="status" class="status" role="status" hidden></div>
+    <section id="latest-page" aria-labelledby="nav-latest">
+      <p id="measurement-info" hidden>last reading #<span id="measurement">—</span> at <span id="timestamp">—</span></p>
+      <section id="values" class="values" aria-label="Latest reading" hidden></section>
+    </section>
+    <section id="charts-page" aria-labelledby="nav-charts" hidden>
   <section id="chart-panel" aria-label="Measurement history chart" hidden>
     <section class="chart-section" aria-label="O₂, CO₂ and Temperature">
       <div class="chart-layout">
@@ -95,15 +157,15 @@
         <svg id="chart-right-axes-3" class="chart-axes" preserveAspectRatio="none" role="img" aria-label="Tilt, degrees"></svg>
       </div>
     </section>
-    <div class="chart-zoom" role="group" aria-label="Time zoom">
-      <button id="chart-zoom-in" type="button" aria-label="Zoom in time" title="Zoom in time">+</button>
-      <button id="chart-zoom-out" type="button" aria-label="Zoom out time" title="Zoom out time">−</button>
-    </div>
   </section>
-  <details id="history" hidden>
-    <summary id="history-summary">Previous readings</summary>
-    <section id="history-values" class="values" aria-label="Previous readings"></section>
-  </details>
+    </section>
+    <section id="measurements-page" aria-labelledby="nav-measurements" hidden>
+      <section id="history" aria-label="Measurements" hidden>
+        <p id="history-summary"></p>
+        <section id="history-values" class="values" aria-label="All readings" tabindex="0"></section>
+      </section>
+    </section>
+  </main>
   <template id="reading-template">
     <article class="card record">
       <div class="record-heading" data-field="record-heading">reading #<span data-field="measurement"></span> at <span data-field="timestamp"></span></div>
@@ -138,6 +200,43 @@
     (() => {
       const $ = id => document.getElementById(id);
       const hex = (value, width = 2) => `0x${value.toString(16).toUpperCase().padStart(width, '0')}`;
+      const pages = { latest: 'Latest reading', charts: 'Charts', measurements: 'Measurements' };
+      let resizeCharts = () => {};
+
+      function showPage(focus = false) {
+        const requested = new URLSearchParams(location.search).get('page');
+        const page = Object.hasOwn(pages, requested) ? requested : 'latest';
+        for (const key of Object.keys(pages)) {
+          $(`${key}-page`).hidden = key !== page;
+          const link = $(`nav-${key}`);
+          if (key === page) link.setAttribute('aria-current', 'page');
+          else link.removeAttribute('aria-current');
+          const url = new URL(location.href);
+          url.searchParams.delete('page');
+          if (key !== 'latest') url.searchParams.set('page', key);
+          link.href = url.href;
+        }
+        $('chart-zoom').hidden = page !== 'charts';
+        document.title = `${pages[page]} · Logger sensor readings`;
+        if (page === 'charts') resizeCharts();
+        if (focus) {
+          $('page-content').focus({ preventScroll: true });
+          window.scrollTo(0, 0);
+        }
+      }
+
+      for (const key of Object.keys(pages)) {
+        $(`nav-${key}`).addEventListener('click', event => {
+          if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+          event.preventDefault();
+          const href = $(`nav-${key}`).href;
+          if (href === location.href) return;
+          window.history.pushState(null, '', href);
+          showPage(true);
+        });
+      }
+      window.addEventListener('popstate', () => showPage(true));
+      showPage();
 
       function decodeBase64(fragment) {
         // Regular Base64, URL-safe Base64, and whitespace are supported.
@@ -198,13 +297,13 @@
           return el;
         };
         const series = [
-          { key: 'o2', label: 'O₂', unit: '%', color: '#38bdf8', value: r => r.o2 },
-          { key: 'co2', label: 'CO₂', unit: '%', color: 'CanvasText', value: r => r.co2 },
-          { key: 'temp', label: 'Temperature', unit: '°C', color: '#ef4444', value: r => r.temp },
-          { key: 'pressure', label: 'Pressure', unit: 'hPa', color: '#22c55e', value: r => r.pressure === null ? null : r.pressure / 100 },
-          { key: 'humidity', label: 'RH', unit: '%RH', color: '#3b82f6', value: r => r.humidity },
-          { key: 'lux', label: 'Illuminance', unit: 'lux', color: '#facc15', value: r => r.lux },
-          { key: 'tilt', label: 'Tilt', unit: '°', color: 'CanvasText', value: tiltAngle },
+          { key: 'o2', label: 'O₂', unit: '%', minRange: 2, color: '#38bdf8', value: r => r.o2 },
+          { key: 'co2', label: 'CO₂', unit: '%', minRange: 2, color: 'CanvasText', value: r => r.co2 },
+          { key: 'temp', label: 'Temperature', unit: '°C', minRange: 5, color: '#ef4444', value: r => r.temp },
+          { key: 'pressure', label: 'Pressure', unit: 'hPa', minRange: 300, color: '#22c55e', value: r => r.pressure === null ? null : r.pressure / 100 },
+          { key: 'humidity', label: 'RH', unit: '%RH', minRange: 5, color: '#3b82f6', value: r => r.humidity },
+          { key: 'lux', label: 'Illuminance', unit: 'lux', minRange: 100, color: '#facc15', value: r => r.lux },
+          { key: 'tilt', label: 'Tilt', unit: '°', minRange: 20, color: 'CanvasText', value: tiltAngle },
         ];
         const charts = [
           { suffix: '', axes: [['o2', 'co2'], ['temp']] },
@@ -273,7 +372,10 @@
             // O₂ and CO₂ share one range and one physical axis on the first chart.
             const values = axisCurves.flatMap(s => s.points.filter(p => p.value !== null).map(p => p.value));
             let min = Math.min(...values), max = Math.max(...values);
-            const pad = min === max ? Math.max(Math.abs(min) * .1, 1) : (max - min) * .08;
+            const minRange = Math.max(...axisCurves.map(s => s.minRange));
+            // Expand around the data midpoint before rounding to readable ticks.
+            const pad = Math.max((minRange - (max - min)) / 2,
+              min === max ? Math.max(Math.abs(min) * .1, 1) : (max - min) * .08);
             min -= pad;
             max += pad;
             const rawStep = Math.max(1, (max - min) / 4);
@@ -389,8 +491,11 @@
           charts.forEach(chart => chart.svg.setAttribute('style', `width: ${W}px`));
           const screenHeight = window.visualViewport?.height || window.innerHeight;
           const scrollbarsHeight = charts.reduce((sum, chart) => sum + chart.viewport.offsetHeight - chart.viewport.clientHeight, 0);
-          // Only the three charts fill the screen; the header, readings and zoom controls are outside this height.
-          const available = screenHeight - scrollbarsHeight;
+          const panel = $('chart-panel');
+          const panelTop = panel.getBoundingClientRect().top + window.scrollY;
+          const bottomSpace = parseFloat(getComputedStyle(document.body).paddingBottom) + parseFloat(getComputedStyle(panel).marginBottom);
+          // Fit below the header, including page spacing and the charts' own scrollbars.
+          const available = screenHeight - panelTop - bottomSpace - scrollbarsHeight;
           const plotHeight = Math.max(1, Math.floor((available - 46) / charts.length) - plotTop - 6);
           plotBottom = plotTop + plotHeight;
           charts.forEach((chart, index) => {
@@ -460,6 +565,7 @@
         observer.observe(viewport);
         window.addEventListener('resize', resizeChart);
         window.visualViewport?.addEventListener('resize', resizeChart);
+        return resizeChart;
       }
 
       function renderReading(data, showHeading, time) {
@@ -489,7 +595,7 @@
           [0x20, 'Default script restored'],
         ];
         if (data.o2Status === 0) {
-          field('o2').textContent = `${data.o2.toFixed(2)} %`;
+          field('o2').textContent = `${data.o2.toFixed(2)} % O₂`;
         } else {
           field('o2').textContent = 'O2 Measurement failed';
           field('o2-card').classList.add('error');
@@ -502,24 +608,28 @@
 
       try {
         const fragment = location.hash.slice(1);
-        if (!fragment) return;
+        if (!fragment) {
+          $('status').textContent = 'No sensor data. Open a link from an NFC tag to view readings.';
+          $('status').hidden = false;
+          return;
+        }
         const data = parse(decodeBase64(fragment));
         $('sensor-id').textContent = String(data.deviceId).padStart(4, '0');
+        $('sensor-heading').title = `Sensor: ${$('sensor-id').textContent}`;
         const records = [...data.records].sort((a, b) => a.timestamp - b.timestamp);
         const last = records.at(-1);
         const now = Date.now();
         const timeOffset = last ? now - last.timestamp * 1000 : 0;
-        const previous = records.slice(0, -1);
-        $('history-values').replaceChildren(...previous.map(record => renderReading(record, true, formatTime(timeOffset + record.timestamp * 1000))));
-        $('history').hidden = previous.length === 0;
-        $('history-summary').textContent = `Previous readings (${previous.length})`;
+        $('history-values').replaceChildren(...records.map(record => renderReading(record, true, formatTime(timeOffset + record.timestamp * 1000))));
+        $('history').hidden = records.length === 0;
+        $('history-summary').textContent = `${records.length} readings`;
         if (last) {
           $('values').replaceChildren(renderReading(last, false, formatTime(now)));
           $('measurement').textContent = String(last.measurement);
           $('timestamp').textContent = formatTime(now);
           $('measurement-info').hidden = false;
           $('values').hidden = false;
-          drawChart(records, timeOffset);
+          resizeCharts = drawChart(records, timeOffset);
         } else {
           $('status').textContent = 'No measurements available.';
           $('status').hidden = false;
